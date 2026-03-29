@@ -42,7 +42,7 @@ export default function DashboardPage() {
         if (parsed.filters) return parsed.filters;
       }
     } catch (e) {}
-    return { name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'] };
+    return { name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'], sort_by: 'end_date', order: 'asc' };
   });
 
   const [scrollYToRestore, setScrollYToRestore] = useState(() => {
@@ -119,6 +119,8 @@ export default function DashboardPage() {
     if (f.categories.length > 0) {
       params.category_id = f.categories;
     }
+    if (f.sort_by) params.sort_by = f.sort_by;
+    if (f.order) params.order = f.order;
     return params;
   };
 
@@ -231,6 +233,33 @@ export default function DashboardPage() {
               onClick={() => toggleStatus(s.key)}
             >{s.label}</button>
           ))}
+        </div>
+      </div>
+
+      <div className="filter-chips-row">
+        <span className="filter-chips-label">排序</span>
+        <div className="filter-chips">
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'end_date' || !filters.sort_by ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'end_date', order: (f.sort_by === 'end_date' && f.order === 'asc') ? 'desc' : 'asc' }))}
+          >
+            到期日 {(!filters.sort_by || filters.sort_by === 'end_date') && (filters.order === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'name' ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'name', order: (f.sort_by === 'name' && f.order === 'asc') ? 'desc' : 'asc' }))}
+          >
+            名称 {filters.sort_by === 'name' && (filters.order === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'cost' ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'cost', order: (f.sort_by === 'cost' && f.order === 'desc') ? 'asc' : 'desc' }))}
+          >
+            月费 {filters.sort_by === 'cost' && (filters.order === 'asc' ? '↑' : '↓')}
+          </button>
         </div>
       </div>
 

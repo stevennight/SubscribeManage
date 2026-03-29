@@ -134,7 +134,7 @@ const ICON_LIST = [
 const ALL_ICONS = [
   ...ICON_LIST,
   ...FA_ICONS.filter(i => !ICON_LIST.some(cur => cur.class === i.c))
-    .map(i => ({ class: i.c, label: i.l }))
+    .map(i => ({ class: i.c, label: i.l, s: i.s }))
 ];
 
 export default function IconPicker({ value, onChange, onClose }) {
@@ -148,7 +148,7 @@ export default function IconPicker({ value, onChange, onClose }) {
         (icon) => 
           icon.label.toLowerCase().includes(q) || 
           icon.class.toLowerCase().includes(q) ||
-          (icon.s && icon.s.includes(q))
+          (icon.s && icon.s.toLowerCase().includes(q))
       );
     }
     // Limit to exactly 100 icons globally to maintain buttery smooth modal render times

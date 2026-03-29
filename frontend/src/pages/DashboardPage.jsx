@@ -235,8 +235,21 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="sub-cost">
-                <div className="amount">{sub.monthly_cost ? parseFloat(sub.monthly_cost).toFixed(2) : parseFloat(sub.cost_original).toFixed(2)} {sub.monthly_cost ? unifiedCurrency : sub.currency_original}</div>
-                <div className="period">/ 月</div>
+                {sub.monthly_cost ? (
+                  <>
+                    <div className="amount">{parseFloat(sub.monthly_cost).toFixed(2)} {unifiedCurrency}</div>
+                    <div className="period">/ 月</div>
+                  </>
+                ) : (
+                  <div className="amount" style={{ color: 'var(--warning)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }} title="未配置统一币种或汇率获取失败">
+                    <i className="fas fa-exclamation-triangle"></i> 未折算
+                  </div>
+                )}
+                {(sub.monthly_cost ? sub.currency_original !== unifiedCurrency : true) && (
+                  <div className="original-cost" style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: 'auto', marginTop: '4px' }}>
+                    {parseFloat(sub.monthly_cost_original || 0).toFixed(2)} {sub.currency_original} / 月
+                  </div>
+                )}
               </div>
             </div>
           ))}

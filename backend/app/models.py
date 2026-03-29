@@ -100,6 +100,19 @@ class Subscription(Base):
         order_by="desc(PaymentHistory.renewed_at)"
     )
 
+    @property
+    def monthly_cost_original(self) -> Decimal:
+        """Calculate the monthly cost in the original currency."""
+        if not self.cost_original or not self.cycle_amount:
+            return Decimal("0.0")
+        if self.cycle_unit == "day":
+            return round(self.cost_original / self.cycle_amount * 30, 2)
+        elif self.cycle_unit == "month":
+            return round(self.cost_original / self.cycle_amount, 2)
+        elif self.cycle_unit == "year":
+            return round(self.cost_original / (self.cycle_amount * 12), 2)
+        return self.cost_original
+
 
 class PaymentHistory(Base):
     """Payment history including initial activation and renewals."""

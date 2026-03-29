@@ -167,7 +167,8 @@ export default function SubscriptionDetailPage() {
       <div className="page-header">
         <h1>
           <span className="sub-logo" style={{ display: 'inline-flex', marginRight: 12, verticalAlign: 'middle' }}>
-            {sub.logo_type === 'fontawesome' && sub.logo_value ? <i className={sub.logo_value}></i> :
+            {sub.logo_type === 'emoji' && sub.logo_value ? <span style={{ fontSize: '24px', lineHeight: 1 }}>{sub.logo_value}</span> :
+             sub.logo_type === 'fontawesome' && sub.logo_value ? <i className={sub.logo_value}></i> :
              (sub.logo_type === 'favicon' || sub.logo_type === 'upload') && sub.logo_value ?
              <img src={sub.logo_value} alt="" /> : <i className="fas fa-cube"></i>}
           </span>

@@ -307,8 +307,9 @@ export default function SubscriptionFormPage() {
             <label>图标</label>
             <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
               <select className="form-control" style={{ width: 150 }} value={form.logo_type}
-                onChange={(e) => { handleChange('logo_type', e.target.value); if (e.target.value !== 'fontawesome') handleChange('logo_value', ''); }}>
+                onChange={(e) => { handleChange('logo_type', e.target.value); if (e.target.value !== 'fontawesome' && e.target.value !== 'emoji') handleChange('logo_value', ''); }}>
                 <option value="default">默认</option>
+                <option value="emoji">Emoji 表情</option>
                 <option value="fontawesome">Font Awesome</option>
                 <option value="favicon">网站图标</option>
                 <option value="upload">自定义上传</option>
@@ -318,11 +319,19 @@ export default function SubscriptionFormPage() {
                   {form.logo_value ? <><i className={form.logo_value} style={{ marginRight: 6 }}></i>更换图标</> : <><i className="fas fa-th"></i> 选择图标</>}
                 </button>
               )}
+              {form.logo_type === 'emoji' && (
+                <input type="text" className="form-control" style={{ width: 80, textAlign: 'center', fontSize: '18px' }} 
+                  maxLength={6} placeholder="😀"
+                  value={form.logo_value} onChange={(e) => handleChange('logo_value', e.target.value)} />
+              )}
               {form.logo_type === 'upload' && (
                 <input type="file" accept="image/*" onChange={handleUploadLogo} />
               )}
               {form.logo_value && form.logo_type === 'fontawesome' && (
                 <div className="sub-logo"><i className={form.logo_value}></i></div>
+              )}
+              {form.logo_value && form.logo_type === 'emoji' && (
+                <div className="sub-logo" style={{ fontSize: '24px' }}>{form.logo_value}</div>
               )}
               {form.logo_value && (form.logo_type === 'favicon' || form.logo_type === 'upload') && (
                 <div className="sub-logo"><img src={form.logo_value} alt="" /></div>

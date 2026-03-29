@@ -2,6 +2,7 @@
  * Font Awesome icon picker - searchable grid of icons for user selection.
  */
 import { useState, useMemo } from 'react';
+import FA_ICONS from '../assets/fa-icons.json';
 
 // Curated list of common Font Awesome icons suitable for subscriptions/services
 const ICON_LIST = [
@@ -130,15 +131,28 @@ const ICON_LIST = [
   { class: 'fas fa-infinity', label: '无限' },
 ];
 
+const ALL_ICONS = [
+  ...ICON_LIST,
+  ...FA_ICONS.filter(i => !ICON_LIST.some(cur => cur.class === i.c))
+    .map(i => ({ class: i.c, label: i.l }))
+];
+
 export default function IconPicker({ value, onChange, onClose }) {
   const [search, setSearch] = useState('');
 
   const filtered = useMemo(() => {
-    if (!search) return ICON_LIST;
-    const q = search.toLowerCase();
-    return ICON_LIST.filter(
-      (icon) => icon.label.toLowerCase().includes(q) || icon.class.toLowerCase().includes(q)
-    );
+    let result = ALL_ICONS;
+    if (search) {
+      const q = search.toLowerCase();
+      result = ALL_ICONS.filter(
+        (icon) => 
+          icon.label.toLowerCase().includes(q) || 
+          icon.class.toLowerCase().includes(q) ||
+          (icon.s && icon.s.includes(q))
+      );
+    }
+    // Limit to exactly 100 icons globally to maintain buttery smooth modal render times
+    return result.slice(0, 100);
   }, [search]);
 
   return (

@@ -13,6 +13,9 @@ const STATUS_MAP = {
 };
 
 function SubLogo({ sub }) {
+  if (sub.logo_type === 'emoji' && sub.logo_value) {
+    return <span style={{ fontSize: '24px', lineHeight: 1 }}>{sub.logo_value}</span>;
+  }
   if (sub.logo_type === 'fontawesome' && sub.logo_value) {
     return <i className={sub.logo_value}></i>;
   }

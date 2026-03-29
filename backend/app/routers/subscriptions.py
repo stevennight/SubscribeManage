@@ -41,6 +41,7 @@ def _build_response(sub: Subscription) -> SubscriptionResponse:
         cost_unified=sub.cost_unified,
         exchange_rate=sub.exchange_rate,
         monthly_cost=sub.monthly_cost,
+        monthly_cost_original=sub.monthly_cost_original,
         start_date=sub.start_date,
         end_date=sub.end_date,
         reminder_days=sub.reminder_days,

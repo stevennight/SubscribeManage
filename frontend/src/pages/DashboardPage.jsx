@@ -33,7 +33,29 @@ export default function DashboardPage() {
   const [listMonthlyCost, setListMonthlyCost] = useState(0);
   const [unifiedCurrency, setUnifiedCurrency] = useState('');
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'] });
+  
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.filters) return parsed.filters;
+      }
+    } catch (e) {}
+    return { name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'] };
+  });
+
+  const [scrollYToRestore, setScrollYToRestore] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.scrollY || 0;
+      }
+    } catch (e) {}
+    return 0;
+  });
+
   const navigate = useNavigate();
 
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
@@ -124,6 +146,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      const parsed = saved ? JSON.parse(saved) : {};
+      sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, filters }));
+    } catch (e) {}
+
     const timer = setTimeout(() => {
       getSubscriptions(buildParams(filters)).then(res => {
         setSubs(res.data.items);
@@ -132,6 +160,22 @@ export default function DashboardPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [filters]);
+
+  useEffect(() => {
+    if (!loading && scrollYToRestore > 0 && subs.length > 0) {
+      setTimeout(() => {
+        window.scrollTo(0, scrollYToRestore);
+        setScrollYToRestore(0);
+        try {
+          const saved = sessionStorage.getItem('dashboard_state');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, scrollY: 0 }));
+          }
+        } catch (e) {}
+      }, 50);
+    }
+  }, [loading, subs, scrollYToRestore]);
 
   return (
     <div>
@@ -222,7 +266,14 @@ export default function DashboardPage() {
       ) : (
         <div className="sub-grid">
           {subs.map(sub => (
-            <div key={sub.id} className="sub-card" onClick={() => navigate(`/subscriptions/${sub.id}`)}>
+            <div key={sub.id} className="sub-card" onClick={() => {
+              try {
+                const saved = sessionStorage.getItem('dashboard_state');
+                const parsed = saved ? JSON.parse(saved) : {};
+                sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, scrollY: window.scrollY }));
+              } catch (e) {}
+              navigate(`/subscriptions/${sub.id}`);
+            }}>
               <div className="sub-logo"><SubLogo sub={sub} /></div>
               <div className="sub-info">
                 <h3>{sub.name}</h3>

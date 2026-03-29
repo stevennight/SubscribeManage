@@ -10,6 +10,7 @@ const STATUS_MAP = {
   expiring: { label: '即将到期', class: 'badge-expiring' },
   expired: { label: '已到期', class: 'badge-expired' },
   disabled: { label: '已停用', class: 'badge-disabled' },
+  not_renewing: { label: '到期不续', class: 'badge-not_renewing' },
 };
 
 function SubLogo({ sub }) {
@@ -32,7 +33,7 @@ export default function DashboardPage() {
   const [listMonthlyCost, setListMonthlyCost] = useState(0);
   const [unifiedCurrency, setUnifiedCurrency] = useState('');
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ name: '', categories: [], statuses: ['active', 'expiring', 'expired'] });
+  const [filters, setFilters] = useState({ name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'] });
   const navigate = useNavigate();
 
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
@@ -42,6 +43,7 @@ export default function DashboardPage() {
     { key: 'expiring', label: '即将到期' },
     { key: 'expired', label: '已到期' },
     { key: 'disabled', label: '已停用' },
+    { key: 'not_renewing', label: '到期不续' },
   ];
 
   const toggleStatus = (key) => {
@@ -58,7 +60,7 @@ export default function DashboardPage() {
   const toggleAllStatuses = () => {
     setFilters(f => {
       if (f.statuses.length === ALL_STATUSES.length) {
-        return { ...f, statuses: ['active', 'expiring', 'expired'] };
+        return { ...f, statuses: ['active', 'expiring', 'expired', 'not_renewing'] };
       }
       return { ...f, statuses: ALL_STATUSES.map(s => s.key) };
     });

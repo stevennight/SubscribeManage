@@ -86,8 +86,13 @@ async def task_daily_subscription_check():
         for sub in subs:
             # Update status
             if sub.end_date <= today:
-                if sub.status != "expired":
+                if sub.status == "not_renewing":
+                    sub.status = "disabled"
+                elif sub.status != "expired":
                     sub.status = "expired"
+            elif sub.status == "not_renewing":
+                # Skip reminder completely
+                continue
             elif sub.end_date <= today + timedelta(days=sub.reminder_days):
                 if sub.status != "expiring":
                     sub.status = "expiring"

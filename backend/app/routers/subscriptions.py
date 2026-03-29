@@ -87,12 +87,16 @@ def _sync_subscription_dates(db: Session, sub: Subscription):
         if sub.status != "disabled" and sub.end_date:
             today = date.today()
             if sub.end_date <= today:
-                sub.status = "expired"
+                if sub.status == "not_renewing":
+                    sub.status = "disabled"
+                else:
+                    sub.status = "expired"
+            elif sub.status == "not_renewing":
+                pass
             elif sub.reminder_days is not None and (sub.end_date - today).days <= sub.reminder_days:
                 sub.status = "expiring"
             else:
                 sub.status = "active"
-                
     else:
         # If no records remain, reset dates to null and status to active
         sub.start_date = None
@@ -120,7 +124,7 @@ def get_dashboard_stats(
     category_data = {}  # cat_id -> {'name': str, 'cost': Decimal, 'count': int}
 
     for s in subs:
-        if s.status == "active":
+        if s.status in ("active", "not_renewing"):
             active_count += 1
         elif s.status == "expiring":
             expiring_count += 1
@@ -368,6 +372,28 @@ def disable_subscription(
     sub.cancel_date = d.today()
     db.commit()
     return {"message": "订阅已停用"}
+
+
+@router.patch("/{sub_id}/cancel_renewal")
+def cancel_renewal(
+    sub_id: int,
+    _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a subscription to not renew."""
+    sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="订阅不存在")
+
+    if sub.status in ("active", "expiring"):
+        sub.status = "not_renewing"
+        db.commit()
+    elif sub.status == "not_renewing":
+        pass # Already not renewing
+    else:
+        raise HTTPException(status_code=400, detail="当前状态不可取消续订")
+        
+    return {"message": "已设置为到期不续费"}
 
 
 @router.patch("/{sub_id}/enable")

@@ -79,7 +79,7 @@ class Subscription(Base):
     # Payment
     payment_method = Column(String(100), nullable=True)
 
-    # Status: active / expiring / expired / disabled
+    # Status: active / expiring / expired / disabled / not_renewing
     status = Column(String(20), default="active", index=True)
     cancel_date = Column(Date, nullable=True)
 

@@ -11,7 +11,7 @@ const ICON_LIST = [
   { class: 'fab fa-apple', label: 'Apple' },
   { class: 'fab fa-google', label: 'Google' },
   { class: 'fab fa-amazon', label: 'Amazon' },
-  { class: 'fab fa-netflix', label: 'Netflix' },  
+
   { class: 'fab fa-youtube', label: 'YouTube' },
   { class: 'fab fa-twitch', label: 'Twitch' },
   { class: 'fab fa-steam', label: 'Steam' },

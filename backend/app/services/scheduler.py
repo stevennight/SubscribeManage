@@ -84,6 +84,11 @@ async def task_daily_subscription_check():
         ).all()
 
         for sub in subs:
+            if not sub.end_date:
+                if sub.status not in ("active",):
+                    sub.status = "active"
+                continue
+
             # Update status
             if sub.end_date <= today:
                 if sub.status == "not_renewing":
@@ -93,7 +98,7 @@ async def task_daily_subscription_check():
             elif sub.status == "not_renewing":
                 # Skip reminder completely
                 continue
-            elif sub.end_date <= today + timedelta(days=sub.reminder_days):
+            elif sub.reminder_days is not None and sub.end_date <= today + timedelta(days=sub.reminder_days):
                 if sub.status != "expiring":
                     sub.status = "expiring"
 

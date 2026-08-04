@@ -15,7 +15,7 @@ cd SubscribeManage
 cp .env.example .env
 ```
 
-Set `SUBSCRIBEMANAGE_VERSION` in `.env` to an exact release tag, for example `v0.1.0`. Set a production `SECRET_KEY` and default credentials before starting:
+Set `SUBSCRIBEMANAGE_VERSION` in `.env` to an exact release tag, for example `v0.1.1`. Set a production `SECRET_KEY` and default credentials before starting:
 
 ```bash
 docker compose pull
@@ -50,8 +50,8 @@ This uses `subscribemanage-backend:local` and `subscribemanage-frontend:local`; 
 Push a SemVer tag with the `v` prefix:
 
 ```bash
-git tag v0.1.0
-git push origin v0.1.0
+git tag v0.1.1
+git push origin v0.1.1
 ```
 
 The release workflow validates the tag, builds both images for `linux/amd64` and `linux/arm64`, pushes versioned GHCR tags, and publishes GitHub release notes. Normal pushes and pull requests run backend/frontend checks and build both Docker images without pushing them.

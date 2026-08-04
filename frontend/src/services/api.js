@@ -74,6 +74,7 @@ export const getPaymentHistory = (id) => api.get(`/api/subscriptions/${id}/payme
 export const createSubscription = (data) => api.post('/api/subscriptions', data);
 export const updateSubscription = (id, data) => api.put(`/api/subscriptions/${id}`, data);
 export const disableSubscription = (id) => api.patch(`/api/subscriptions/${id}/disable`);
+export const cancelRenewal = (id) => api.patch(`/api/subscriptions/${id}/cancel_renewal`);
 export const enableSubscription = (id) => api.patch(`/api/subscriptions/${id}/enable`);
 export const deleteSubscription = (id) => api.delete(`/api/subscriptions/${id}`);
 export const addPaymentRecord = (id, data) => api.post(`/api/subscriptions/${id}/payments`, data);

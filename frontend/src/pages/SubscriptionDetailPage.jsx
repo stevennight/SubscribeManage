@@ -5,7 +5,7 @@ import { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   getSubscription, getPaymentHistory, getSettings,
-  disableSubscription, enableSubscription, addPaymentRecord,
+  disableSubscription, enableSubscription, cancelRenewal, addPaymentRecord,
   updatePaymentRecord, deletePaymentRecord,
 } from '../services/api';
 
@@ -14,6 +14,7 @@ const STATUS_MAP = {
   expiring: { label: '即将到期', class: 'badge-expiring' },
   expired: { label: '已到期', class: 'badge-expired' },
   disabled: { label: '已停用', class: 'badge-disabled' },
+  not_renewing: { label: '到期不续', class: 'badge-not_renewing' },
 };
 
 const UNIT_MAP = { day: '天', month: '月', year: '年' };
@@ -114,6 +115,7 @@ export default function SubscriptionDetailPage() {
     try {
       if (action === 'disable') await disableSubscription(id);
       else if (action === 'enable') await enableSubscription(id);
+      else if (action === 'cancel_renewal') await cancelRenewal(id);
       await load();
     } catch (err) { alert(err.response?.data?.detail || '操作失败'); }
     finally { setActionLoading(''); }
@@ -167,7 +169,8 @@ export default function SubscriptionDetailPage() {
       <div className="page-header">
         <h1>
           <span className="sub-logo" style={{ display: 'inline-flex', marginRight: 12, verticalAlign: 'middle' }}>
-            {sub.logo_type === 'fontawesome' && sub.logo_value ? <i className={sub.logo_value}></i> :
+            {sub.logo_type === 'emoji' && sub.logo_value ? <span style={{ fontSize: '24px', lineHeight: 1 }}>{sub.logo_value}</span> :
+             sub.logo_type === 'fontawesome' && sub.logo_value ? <i className={sub.logo_value}></i> :
              (sub.logo_type === 'favicon' || sub.logo_type === 'upload') && sub.logo_value ?
              <img src={sub.logo_value} alt="" /> : <i className="fas fa-cube"></i>}
           </span>
@@ -185,8 +188,22 @@ export default function SubscriptionDetailPage() {
             <>
               <button className="btn btn-success btn-sm" onClick={openRenewModal}
                 disabled={actionLoading === 'renew'}>
-                <i className="fas fa-plus"></i> {actionLoading === 'renew' ? '提交中...' : '添加付费记录'}
+                <i className="fas fa-plus"></i> {actionLoading === 'renew' ? '提交... ' : '添加付费记录'}
               </button>
+
+              {sub.status === 'not_renewing' ? (
+                <button className="btn btn-success btn-sm" onClick={() => handleAction('enable')}
+                  disabled={actionLoading === 'enable'}>
+                  <i className="fas fa-undo"></i> 恢复续订
+                </button>
+              ) : sub.status !== 'expired' ? (
+                <button className="btn btn-warning btn-sm" onClick={() => handleAction('cancel_renewal')}
+                  disabled={actionLoading === 'cancel_renewal'}
+                  style={{ background: 'var(--warning)', color: '#000', border: 'none' }}>
+                  <i className="fas fa-calendar-times"></i> 到期不续
+                </button>
+              ) : null}
+
               <button className="btn btn-danger btn-sm" onClick={() => handleAction('disable')}
                 disabled={actionLoading === 'disable'}>
                 <i className="fas fa-ban"></i> 停用

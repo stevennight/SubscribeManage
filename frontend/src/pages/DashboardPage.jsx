@@ -10,9 +10,13 @@ const STATUS_MAP = {
   expiring: { label: '即将到期', class: 'badge-expiring' },
   expired: { label: '已到期', class: 'badge-expired' },
   disabled: { label: '已停用', class: 'badge-disabled' },
+  not_renewing: { label: '到期不续', class: 'badge-not_renewing' },
 };
 
 function SubLogo({ sub }) {
+  if (sub.logo_type === 'emoji' && sub.logo_value) {
+    return <span style={{ fontSize: '24px', lineHeight: 1 }}>{sub.logo_value}</span>;
+  }
   if (sub.logo_type === 'fontawesome' && sub.logo_value) {
     return <i className={sub.logo_value}></i>;
   }
@@ -29,7 +33,29 @@ export default function DashboardPage() {
   const [listMonthlyCost, setListMonthlyCost] = useState(0);
   const [unifiedCurrency, setUnifiedCurrency] = useState('');
   const [loading, setLoading] = useState(true);
-  const [filters, setFilters] = useState({ name: '', categories: [], statuses: ['active', 'expiring', 'expired'] });
+  
+  const [filters, setFilters] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed.filters) return parsed.filters;
+      }
+    } catch (e) { console.error(e); }
+    return { name: '', categories: [], statuses: ['active', 'expiring', 'expired', 'not_renewing'], sort_by: 'end_date', order: 'asc' };
+  });
+
+  const [scrollYToRestore, setScrollYToRestore] = useState(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return parsed.scrollY || 0;
+      }
+    } catch (e) { console.error(e); }
+    return 0;
+  });
+
   const navigate = useNavigate();
 
   const [showBreakdownModal, setShowBreakdownModal] = useState(false);
@@ -39,6 +65,7 @@ export default function DashboardPage() {
     { key: 'expiring', label: '即将到期' },
     { key: 'expired', label: '已到期' },
     { key: 'disabled', label: '已停用' },
+    { key: 'not_renewing', label: '到期不续' },
   ];
 
   const toggleStatus = (key) => {
@@ -55,7 +82,7 @@ export default function DashboardPage() {
   const toggleAllStatuses = () => {
     setFilters(f => {
       if (f.statuses.length === ALL_STATUSES.length) {
-        return { ...f, statuses: ['active', 'expiring', 'expired'] };
+        return { ...f, statuses: ['active', 'expiring', 'expired', 'not_renewing'] };
       }
       return { ...f, statuses: ALL_STATUSES.map(s => s.key) };
     });
@@ -92,6 +119,8 @@ export default function DashboardPage() {
     if (f.categories.length > 0) {
       params.category_id = f.categories;
     }
+    if (f.sort_by) params.sort_by = f.sort_by;
+    if (f.order) params.order = f.order;
     return params;
   };
 
@@ -119,6 +148,12 @@ export default function DashboardPage() {
   };
 
   useEffect(() => {
+    try {
+      const saved = sessionStorage.getItem('dashboard_state');
+      const parsed = saved ? JSON.parse(saved) : {};
+      sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, filters }));
+    } catch (e) { console.error(e); }
+
     const timer = setTimeout(() => {
       getSubscriptions(buildParams(filters)).then(res => {
         setSubs(res.data.items);
@@ -127,6 +162,22 @@ export default function DashboardPage() {
     }, 300);
     return () => clearTimeout(timer);
   }, [filters]);
+
+  useEffect(() => {
+    if (!loading && scrollYToRestore > 0 && subs.length > 0) {
+      setTimeout(() => {
+        window.scrollTo(0, scrollYToRestore);
+        setScrollYToRestore(0);
+        try {
+          const saved = sessionStorage.getItem('dashboard_state');
+          if (saved) {
+            const parsed = JSON.parse(saved);
+            sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, scrollY: 0 }));
+          }
+        } catch (e) { console.error(e); }
+      }, 50);
+    }
+  }, [loading, subs, scrollYToRestore]);
 
   return (
     <div>
@@ -186,6 +237,33 @@ export default function DashboardPage() {
       </div>
 
       <div className="filter-chips-row">
+        <span className="filter-chips-label">排序</span>
+        <div className="filter-chips">
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'end_date' || !filters.sort_by ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'end_date', order: (f.sort_by === 'end_date' && f.order === 'asc') ? 'desc' : 'asc' }))}
+          >
+            到期日 {(!filters.sort_by || filters.sort_by === 'end_date') && (filters.order === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'name' ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'name', order: (f.sort_by === 'name' && f.order === 'asc') ? 'desc' : 'asc' }))}
+          >
+            名称 {filters.sort_by === 'name' && (filters.order === 'desc' ? '↓' : '↑')}
+          </button>
+          <button
+            type="button"
+            className={`filter-chip ${filters.sort_by === 'cost' ? 'active' : ''}`}
+            onClick={() => setFilters(f => ({ ...f, sort_by: 'cost', order: (f.sort_by === 'cost' && f.order === 'desc') ? 'asc' : 'desc' }))}
+          >
+            月费 {filters.sort_by === 'cost' && (filters.order === 'asc' ? '↑' : '↓')}
+          </button>
+        </div>
+      </div>
+
+      <div className="filter-chips-row">
         <span className="filter-chips-label">分类</span>
         <div className="filter-chips">
           <button
@@ -217,7 +295,14 @@ export default function DashboardPage() {
       ) : (
         <div className="sub-grid">
           {subs.map(sub => (
-            <div key={sub.id} className="sub-card" onClick={() => navigate(`/subscriptions/${sub.id}`)}>
+            <div key={sub.id} className="sub-card" onClick={() => {
+              try {
+                const saved = sessionStorage.getItem('dashboard_state');
+                const parsed = saved ? JSON.parse(saved) : {};
+                sessionStorage.setItem('dashboard_state', JSON.stringify({ ...parsed, scrollY: window.scrollY }));
+              } catch (e) { console.error(e); }
+              navigate(`/subscriptions/${sub.id}`);
+            }}>
               <div className="sub-logo"><SubLogo sub={sub} /></div>
               <div className="sub-info">
                 <h3>{sub.name}</h3>
@@ -235,8 +320,21 @@ export default function DashboardPage() {
                 </div>
               </div>
               <div className="sub-cost">
-                <div className="amount">{sub.monthly_cost ? parseFloat(sub.monthly_cost).toFixed(2) : parseFloat(sub.cost_original).toFixed(2)} {sub.monthly_cost ? unifiedCurrency : sub.currency_original}</div>
-                <div className="period">/ 月</div>
+                {sub.monthly_cost ? (
+                  <>
+                    <div className="amount">{parseFloat(sub.monthly_cost).toFixed(2)} {unifiedCurrency}</div>
+                    <div className="period">/ 月</div>
+                  </>
+                ) : (
+                  <div className="amount" style={{ color: 'var(--warning)', fontSize: '13px', display: 'flex', alignItems: 'center', gap: '4px' }} title="未配置统一币种或汇率获取失败">
+                    <i className="fas fa-exclamation-triangle"></i> 未折算
+                  </div>
+                )}
+                {(sub.monthly_cost ? sub.currency_original !== unifiedCurrency : true) && (
+                  <div className="original-cost" style={{ fontSize: '12px', color: 'var(--text-muted)', marginLeft: 'auto', marginTop: '4px' }}>
+                    {parseFloat(sub.monthly_cost_original || 0).toFixed(2)} {sub.currency_original} / 月
+                  </div>
+                )}
               </div>
             </div>
           ))}

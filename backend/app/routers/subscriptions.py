@@ -41,6 +41,7 @@ def _build_response(sub: Subscription) -> SubscriptionResponse:
         cost_unified=sub.cost_unified,
         exchange_rate=sub.exchange_rate,
         monthly_cost=sub.monthly_cost,
+        monthly_cost_original=sub.monthly_cost_original,
         start_date=sub.start_date,
         end_date=sub.end_date,
         reminder_days=sub.reminder_days,
@@ -86,12 +87,16 @@ def _sync_subscription_dates(db: Session, sub: Subscription):
         if sub.status != "disabled" and sub.end_date:
             today = date.today()
             if sub.end_date <= today:
-                sub.status = "expired"
+                if sub.status == "not_renewing":
+                    sub.status = "disabled"
+                else:
+                    sub.status = "expired"
+            elif sub.status == "not_renewing":
+                pass
             elif sub.reminder_days is not None and (sub.end_date - today).days <= sub.reminder_days:
                 sub.status = "expiring"
             else:
                 sub.status = "active"
-                
     else:
         # If no records remain, reset dates to null and status to active
         sub.start_date = None
@@ -119,7 +124,7 @@ def get_dashboard_stats(
     category_data = {}  # cat_id -> {'name': str, 'cost': Decimal, 'count': int}
 
     for s in subs:
-        if s.status == "active":
+        if s.status in ("active", "not_renewing"):
             active_count += 1
         elif s.status == "expiring":
             expiring_count += 1
@@ -166,10 +171,12 @@ def list_subscriptions(
     name: Optional[str] = Query(None),
     category_id: Optional[list[int]] = Query(None),
     status_filter: Optional[list[str]] = Query(None, alias="status"),
+    sort_by: Optional[str] = Query("end_date"),
+    order: Optional[str] = Query("asc"),
     _: str = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
-    """List subscriptions with optional filters (multi-select)."""
+    """List subscriptions with optional filters and sorting."""
     from decimal import Decimal
     query = db.query(Subscription).options(joinedload(Subscription.category))
 
@@ -186,7 +193,24 @@ def list_subscriptions(
         query = query.filter(Subscription.status != "disabled")
 
     total = query.count()
-    subs = query.order_by(Subscription.end_date.asc()).all()
+    
+    if sort_by == "name":
+        if order == "desc":
+            query = query.order_by(Subscription.name.desc())
+        else:
+            query = query.order_by(Subscription.name.asc())
+    elif sort_by == "cost":
+        if order == "desc":
+            query = query.order_by(Subscription.monthly_cost.desc().nulls_last())
+        else:
+            query = query.order_by(Subscription.monthly_cost.asc().nulls_last())
+    else: # default to end_date
+        if order == "desc":
+            query = query.order_by(Subscription.end_date.desc().nulls_last())
+        else:
+            query = query.order_by(Subscription.end_date.asc().nulls_last())
+
+    subs = query.all()
     total_monthly_cost = sum((s.monthly_cost or Decimal("0")) for s in subs)
 
     return SubscriptionListResponse(
@@ -367,6 +391,28 @@ def disable_subscription(
     sub.cancel_date = d.today()
     db.commit()
     return {"message": "订阅已停用"}
+
+
+@router.patch("/{sub_id}/cancel_renewal")
+def cancel_renewal(
+    sub_id: int,
+    _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Mark a subscription to not renew."""
+    sub = db.query(Subscription).filter(Subscription.id == sub_id).first()
+    if not sub:
+        raise HTTPException(status_code=404, detail="订阅不存在")
+
+    if sub.status in ("active", "expiring"):
+        sub.status = "not_renewing"
+        db.commit()
+    elif sub.status == "not_renewing":
+        pass # Already not renewing
+    else:
+        raise HTTPException(status_code=400, detail="当前状态不可取消续订")
+        
+    return {"message": "已设置为到期不续费"}
 
 
 @router.patch("/{sub_id}/enable")

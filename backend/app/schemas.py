@@ -93,6 +93,7 @@ class SubscriptionResponse(BaseModel):
     cost_unified: Optional[Decimal] = None
     exchange_rate: Optional[Decimal] = None
     monthly_cost: Optional[Decimal] = None
+    monthly_cost_original: Optional[Decimal] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     reminder_days: int

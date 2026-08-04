@@ -56,7 +56,7 @@ export default function SettingsPage() {
       try {
         const meRes = await getMe();
         setCurrentUsername(meRes.data.username);
-      } catch {}
+      } catch (err) { console.error(err); }
     } catch (err) { console.error(err); }
     finally { setLoading(false); }
   };

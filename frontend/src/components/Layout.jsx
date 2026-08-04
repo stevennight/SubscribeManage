@@ -11,7 +11,8 @@ export default function Layout({ theme, setTheme }) {
 
   // Close sidebar on mobile when route changes
   useEffect(() => {
-    setSidebarOpen(false);
+    const resetSidebar = window.setTimeout(() => setSidebarOpen(false), 0);
+    return () => window.clearTimeout(resetSidebar);
   }, [location.pathname]);
 
   const handleLogout = () => {

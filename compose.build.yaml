@@ -1,0 +1,36 @@
+services:
+  backend:
+    build:
+      context: ./backend
+      args:
+        SUBSCRIBEMANAGE_VERSION: ${SUBSCRIBEMANAGE_VERSION:-0.1.0-dev}
+        SUBSCRIBEMANAGE_COMMIT: ${SUBSCRIBEMANAGE_COMMIT:-local}
+        SUBSCRIBEMANAGE_BUILD_DATE: ${SUBSCRIBEMANAGE_BUILD_DATE:-}
+    image: subscribemanage-backend:local
+    ports:
+      - "${SUBSCRIBEMANAGE_BACKEND_BIND_ADDRESS:-127.0.0.1}:${SUBSCRIBEMANAGE_BACKEND_PORT:-8000}:8000"
+    volumes:
+      - ./backend/data:/app/data
+      - ./backend/uploads:/app/uploads
+    env_file:
+      - .env
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      start_period: 10s
+      retries: 3
+
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        SUBSCRIBEMANAGE_VERSION: ${SUBSCRIBEMANAGE_VERSION:-0.1.0-dev}
+    image: subscribemanage-frontend:local
+    ports:
+      - "${SUBSCRIBEMANAGE_BIND_ADDRESS:-127.0.0.1}:${SUBSCRIBEMANAGE_PORT:-3000}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped

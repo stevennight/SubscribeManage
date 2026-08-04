@@ -135,7 +135,7 @@ export default function SubscriptionFormPage() {
     try {
       const res = await uploadLogo(file);
       setForm(f => ({ ...f, logo_type: 'upload', logo_value: res.data.url }));
-    } catch (err) {
+    } catch {
       setError('图片上传失败');
     }
   };

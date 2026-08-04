@@ -9,6 +9,7 @@ from fastapi.staticfiles import StaticFiles
 from app.config import settings
 from app.database import init_db, SessionLocal
 from app.auth import init_default_user
+from app.version import VERSION, info as version_info
 
 # Configure logging
 logging.basicConfig(
@@ -44,7 +45,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="SubscribeManage",
     description="订阅管理系统 API",
-    version="1.0.0",
+    version=VERSION,
     lifespan=lifespan,
 )
 
@@ -73,4 +74,10 @@ app.include_router(reports.router)
 @app.get("/api/health")
 def health_check():
     """Health check endpoint."""
-    return {"status": "ok", "version": "1.0.0"}
+    return {"status": "ok", **version_info()}
+
+
+@app.get("/api/version")
+def version_check():
+    """Return the running build version and metadata."""
+    return version_info()

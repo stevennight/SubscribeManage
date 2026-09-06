@@ -2,7 +2,7 @@
 import logging
 from typing import Optional
 
-import httpx
+from app.services.http_proxy import build_async_client
 
 logger = logging.getLogger(__name__)
 
@@ -12,9 +12,13 @@ async def send_telegram_message(
     chat_id: str,
     message: str,
     parse_mode: str = "HTML",
+    proxy: Optional[str] = None,
 ) -> bool:
     """Send a message via Telegram Bot API.
-    
+
+    Optionally routed through ``proxy`` (SOCKS/HTTP) for networks that block
+    ``api.telegram.org``.
+
     Returns True if successful, False otherwise.
     """
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
@@ -25,7 +29,7 @@ async def send_telegram_message(
     }
 
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with build_async_client(proxy, timeout=15) as client:
             resp = await client.post(url, json=payload)
             if resp.status_code == 200:
                 data = resp.json()

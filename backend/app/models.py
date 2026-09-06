@@ -29,6 +29,8 @@ class SystemConfig(Base):
     # - telegram_bot_token: Telegram bot token
     # - telegram_chat_id: Telegram chat ID
     # - telegram_enabled: "true" / "false"
+    # - outbound_proxy_url: SOCKS/HTTP proxy for external calls (Telegram, favicon, exchange rate)
+    # - outbound_proxy_enabled: "true" / "false"
 
 
 class Category(Base):

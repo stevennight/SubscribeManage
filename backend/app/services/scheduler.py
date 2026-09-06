@@ -10,6 +10,7 @@ from sqlalchemy.orm import Session
 from app.database import SessionLocal
 from app.models import Subscription, SystemConfig, ExchangeRate
 from app.services.currency import get_unified_currency, get_api_key, update_rates_for_currency
+from app.services.http_proxy import get_proxy_url
 from app.services.notification import (
     send_telegram_message, format_expiry_reminder,
     format_monthly_report,
@@ -52,6 +53,8 @@ async def task_update_exchange_rates():
         if not unified:
             return
 
+        proxy = get_proxy_url(db)
+
         # Get all unique currencies used in subscriptions
         currencies = set()
         for sub in db.query(Subscription.currency_original).distinct().all():
@@ -63,7 +66,7 @@ async def task_update_exchange_rates():
         # Update rates for each base currency -> unified
         for currency in currencies:
             if currency != unified.upper():
-                await update_rates_for_currency(db, api_key, currency, [unified])
+                await update_rates_for_currency(db, api_key, currency, [unified], proxy)
 
         logger.info(f"Updated exchange rates for {len(currencies)} currencies")
     except Exception as e:
@@ -78,6 +81,7 @@ async def task_daily_subscription_check():
     try:
         today = date.today()
         bot_token, chat_id, tg_enabled = _get_telegram_config(db)
+        proxy = get_proxy_url(db)
 
         subs = db.query(Subscription).filter(
             Subscription.status != "disabled"
@@ -112,7 +116,7 @@ async def task_daily_subscription_check():
                 if should_notify and tg_enabled and bot_token and chat_id:
                     days_left = (sub.end_date - today).days
                     msg = format_expiry_reminder(sub.name, sub.end_date, days_left)
-                    success = await send_telegram_message(bot_token, chat_id, msg)
+                    success = await send_telegram_message(bot_token, chat_id, msg, proxy=proxy)
                     if success:
                         sub.last_notified_at = datetime.utcnow()
             else:
@@ -134,6 +138,7 @@ async def task_monthly_report():
         bot_token, chat_id, tg_enabled = _get_telegram_config(db)
         if not tg_enabled or not bot_token or not chat_id:
             return
+        proxy = get_proxy_url(db)
 
         unified = get_unified_currency(db) or ""
 
@@ -160,7 +165,7 @@ async def task_monthly_report():
             breakdown_data,
         )
 
-        await send_telegram_message(bot_token, chat_id, msg)
+        await send_telegram_message(bot_token, chat_id, msg, proxy=proxy)
         logger.info(f"Monthly report sent for {last_month.year}-{last_month.month}")
 
     except Exception as e:

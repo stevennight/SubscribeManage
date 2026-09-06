@@ -189,6 +189,8 @@ class SettingsResponse(BaseModel):
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     telegram_enabled: bool = False
+    outbound_proxy_url: Optional[str] = None
+    outbound_proxy_enabled: bool = False
 
 
 class SettingsUpdate(BaseModel):
@@ -197,6 +199,8 @@ class SettingsUpdate(BaseModel):
     telegram_bot_token: Optional[str] = None
     telegram_chat_id: Optional[str] = None
     telegram_enabled: Optional[bool] = None
+    outbound_proxy_url: Optional[str] = None
+    outbound_proxy_enabled: Optional[bool] = None
 
 
 class PasswordChange(BaseModel):

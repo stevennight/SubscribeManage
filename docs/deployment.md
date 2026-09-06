@@ -38,6 +38,10 @@ docker compose up -d
 
 The SQLite database and uploaded files are stored under `backend/data` and `backend/uploads`. Back up these directories before upgrades. Do not use `docker compose down --volumes`.
 
+## Outbound proxy (restricted networks)
+
+If the server cannot reach `api.telegram.org`, `www.google.com` (favicon lookup) or the exchange-rate API directly, set a SOCKS/HTTP proxy under **Settings → 网络代理** in the web UI. It is applied only to those three outbound integrations; all other traffic is unaffected and ambient `HTTP(S)_PROXY` / `ALL_PROXY` environment variables are ignored. Supported forms: `socks5://`, `socks5h://` (remote DNS), `http://`, `https://`, optionally with `user:pass@`. Use **测试连通性** to verify the proxy can reach Telegram and Google.
+
 ## Local source build
 
 Use the separate build Compose file when validating local source changes:

@@ -3,7 +3,7 @@
  */
 import { useState, useEffect } from 'react';
 import {
-  getSettings, updateSettings, testTelegram,
+  getSettings, updateSettings, testTelegram, testProxy,
   getExchangeRates, updateExchangeRate,
   getCategories, createCategory, updateCategory, deleteCategory,
   changePassword, changeUsername, getMe,
@@ -24,6 +24,8 @@ export default function SettingsPage() {
   const [tgToken, setTgToken] = useState('');
   const [tgChatId, setTgChatId] = useState('');
   const [tgEnabled, setTgEnabled] = useState(false);
+  const [proxyUrl, setProxyUrl] = useState('');
+  const [proxyEnabled, setProxyEnabled] = useState(false);
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
   const [newCatName, setNewCatName] = useState('');
@@ -50,6 +52,8 @@ export default function SettingsPage() {
       setTgToken(s.telegram_bot_token || '');
       setTgChatId(s.telegram_chat_id || '');
       setTgEnabled(s.telegram_enabled);
+      setProxyUrl(s.outbound_proxy_url || '');
+      setProxyEnabled(s.outbound_proxy_enabled);
       setRates(rateRes.data);
       setCategories(catRes.data);
       // Load current username
@@ -97,6 +101,26 @@ export default function SettingsPage() {
       await testTelegram();
       flash('测试消息已发送');
     } catch (err) { flash(err.response?.data?.detail || '发送失败', 'error'); }
+  };
+
+  const handleSaveProxy = async () => {
+    try {
+      await updateSettings({
+        outbound_proxy_url: proxyUrl.trim(),
+        outbound_proxy_enabled: proxyEnabled,
+      });
+      flash('代理配置已保存');
+    } catch (err) { flash(err.response?.data?.detail || '保存失败', 'error'); }
+  };
+
+  const handleTestProxy = async () => {
+    try {
+      const res = await testProxy();
+      flash(res.data?.message || '代理连通正常');
+    } catch (err) {
+      const d = err.response?.data?.detail;
+      flash(typeof d === 'string' ? d : (d?.message || '代理测试失败'), 'error');
+    }
   };
 
   const handleChangePassword = async () => {
@@ -329,6 +353,31 @@ export default function SettingsPage() {
           <input type="text" className="form-control" value={newCatName}
             onChange={(e) => setNewCatName(e.target.value)} placeholder="新分类名称" />
           <button className="btn btn-primary btn-sm" onClick={handleAddCategory}>添加</button>
+        </div>
+      </div>
+
+      {/* Outbound proxy */}
+      <div className="card settings-section">
+        <h3>🌐 网络代理</h3>
+        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
+          仅用于对外请求：Telegram 通知、网站图标获取、汇率 API。留空或不启用时行为不变。
+          支持 <code>socks5://</code>、<code>socks5h://</code>、<code>http://</code>、<code>https://</code>，可带 <code>user:pass@</code>。
+        </p>
+        <div className="form-group">
+          <label>代理地址</label>
+          <input type="text" className="form-control" value={proxyUrl}
+            onChange={(e) => setProxyUrl(e.target.value)}
+            placeholder="socks5://127.0.0.1:1080" />
+        </div>
+        <div className="form-group">
+          <label className="checkbox-group">
+            <input type="checkbox" checked={proxyEnabled}
+              onChange={(e) => setProxyEnabled(e.target.checked)} /> 启用代理
+          </label>
+        </div>
+        <div className="btn-group">
+          <button className="btn btn-primary" onClick={handleSaveProxy}>保存配置</button>
+          <button className="btn btn-secondary" onClick={handleTestProxy}>测试连通性</button>
         </div>
       </div>
 

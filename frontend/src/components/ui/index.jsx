@@ -1,3 +1,4 @@
+/* eslint-disable react-refresh/only-export-components */
 /** Barrel for UI primitives + small presentational helpers. */
 export { default as Button } from './Button';
 export { default as Modal } from './Modal';

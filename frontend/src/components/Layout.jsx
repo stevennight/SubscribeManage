@@ -15,10 +15,16 @@ export default function Layout({ theme, setTheme }) {
   const location = useLocation();
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  useEffect(() => { setDrawerOpen(false); }, [location.pathname]);
+  // Close the mobile drawer on navigation (deferred to dodge set-state-in-effect).
+  useEffect(() => {
+    const t = window.setTimeout(() => setDrawerOpen(false), 0);
+    return () => window.clearTimeout(t);
+  }, [location.pathname]);
 
-  const current = NAV.find((n) => (n.end ? location.pathname === n.to : location.pathname.startsWith(n.to)))
-    || NAV.find((n) => location.pathname.startsWith('/subscriptions')) && NAV[0];
+  const path = location.pathname;
+  const current =
+    NAV.find((item) => (item.end ? path === item.to : path.startsWith(item.to)))
+    || (path.startsWith('/subscriptions') ? NAV[0] : null);
 
   const handleLogout = () => {
     localStorage.removeItem('token');

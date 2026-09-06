@@ -343,6 +343,19 @@ select.form-control {
   cursor: pointer;
 }
 
+.u-mb0 { margin-bottom: 0 !important; }
+.u-half { max-width: 320px; }
+
+/* Sticky-ish form action bar */
+.form-actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+  padding: var(--sp-4) 0 0;
+}
+
 /* legacy spacing helpers referenced in JSX */
 .border-left { border-left: 1px dashed var(--border); }
 .border-top { border-top: 1px solid var(--border); }

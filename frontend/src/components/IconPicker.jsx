@@ -160,15 +160,15 @@ export default function IconPicker({ value, onChange, onClose }) {
       <div className="icon-picker" onClick={(e) => e.stopPropagation()}>
         <div className="icon-picker-header">
           <h3>选择图标</h3>
-          <button className="icon-picker-close" onClick={onClose}>
-            <i className="fas fa-times"></i>
+          <button className="icon-picker-close" onClick={onClose} aria-label="关闭">
+            <i className="fas fa-xmark"></i>
           </button>
         </div>
 
         <input
           type="text"
           className="form-control"
-          placeholder="🔍 搜索图标..."
+          placeholder="搜索图标…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           autoFocus

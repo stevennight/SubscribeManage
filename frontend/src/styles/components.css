@@ -987,7 +987,5 @@ td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
   .sub-cost .original-cost { margin-left: auto; }
 
   .page-header h1 { font-size: var(--text-xl); }
-}
-@media (max-width: 420px) {
-  .stats-grid { grid-template-columns: 1fr; }
+  .stat-value { font-size: var(--text-xl); }
 }

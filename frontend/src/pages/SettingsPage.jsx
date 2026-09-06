@@ -1,5 +1,5 @@
 /**
- * System settings page: unified currency, exchange rates, Telegram, password change.
+ * System settings — currency, exchange rates, notifications, proxy, categories, account.
  */
 import { useState, useEffect } from 'react';
 import {
@@ -8,17 +8,17 @@ import {
   getCategories, createCategory, updateCategory, deleteCategory,
   changePassword, changeUsername, getMe,
 } from '../services/api';
+import { Button, Modal, Field, PageHeader, LoadingBlock, useToast } from '../components/ui';
 
 const CURRENCY_OPTIONS = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'TWD', 'KRW', 'SGD', 'AUD', 'CAD', 'CHF', 'RUB', 'THB', 'MYR'];
 
 export default function SettingsPage() {
+  const toast = useToast();
   const [settings, setSettings] = useState(null);
   const [rates, setRates] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState({ text: '', type: '' });
 
-  // Form states
   const [unifiedCurrency, setUnifiedCurrency] = useState('');
   const [apiKey, setApiKey] = useState('');
   const [tgToken, setTgToken] = useState('');
@@ -26,16 +26,20 @@ export default function SettingsPage() {
   const [tgEnabled, setTgEnabled] = useState(false);
   const [proxyUrl, setProxyUrl] = useState('');
   const [proxyEnabled, setProxyEnabled] = useState(false);
+
   const [oldPwd, setOldPwd] = useState('');
   const [newPwd, setNewPwd] = useState('');
-  const [newCatName, setNewCatName] = useState('');
-  const [editingCat, setEditingCat] = useState(null); // {id, name}
-  const [newRateCurrency, setNewRateCurrency] = useState('USD');
-  const [newRateValue, setNewRateValue] = useState('');
-  const [newRateManual, setNewRateManual] = useState(true);
   const [currentUsername, setCurrentUsername] = useState('');
   const [newUsername, setNewUsername] = useState('');
   const [usernamePwd, setUsernamePwd] = useState('');
+
+  const [newCatName, setNewCatName] = useState('');
+  const [editingCat, setEditingCat] = useState(null);
+  const [catToDelete, setCatToDelete] = useState(null);
+
+  const [newRateCurrency, setNewRateCurrency] = useState('USD');
+  const [newRateValue, setNewRateValue] = useState('');
+  const [newRateManual, setNewRateManual] = useState(true);
 
   useEffect(() => { load(); }, []);
 
@@ -56,120 +60,98 @@ export default function SettingsPage() {
       setProxyEnabled(s.outbound_proxy_enabled);
       setRates(rateRes.data);
       setCategories(catRes.data);
-      // Load current username
       try {
         const meRes = await getMe();
         setCurrentUsername(meRes.data.username);
       } catch (err) { console.error(err); }
-    } catch (err) { console.error(err); }
-    finally { setLoading(false); }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const flash = (text, type = 'success') => {
-    setMsg({ text, type });
-    setTimeout(() => setMsg({ text: '', type: '' }), 3000);
-  };
+  const err = (e, fallback) => toast.error(e.response?.data?.detail || fallback);
 
   const handleSaveUnified = async () => {
     try {
       await updateSettings({ unified_currency: unifiedCurrency });
-      flash('统一币种已设置并锁定');
+      toast.success('统一币种已设置并锁定');
       await load();
-    } catch (err) { flash(err.response?.data?.detail || '保存失败', 'error'); }
+    } catch (e) { err(e, '保存失败'); }
   };
-
   const handleSaveApi = async () => {
-    try {
-      await updateSettings({ exchange_rate_api_key: apiKey });
-      flash('API Key 已保存');
-    } catch (err) { flash('保存失败', 'error'); }
+    try { await updateSettings({ exchange_rate_api_key: apiKey }); toast.success('API Key 已保存'); }
+    catch (e) { err(e, '保存失败'); }
   };
-
   const handleSaveTelegram = async () => {
     try {
-      await updateSettings({
-        telegram_bot_token: tgToken,
-        telegram_chat_id: tgChatId,
-        telegram_enabled: tgEnabled,
-      });
-      flash('Telegram 配置已保存');
-    } catch (err) { flash('保存失败', 'error'); }
+      await updateSettings({ telegram_bot_token: tgToken, telegram_chat_id: tgChatId, telegram_enabled: tgEnabled });
+      toast.success('Telegram 配置已保存');
+    } catch (e) { err(e, '保存失败'); }
   };
-
   const handleTestTelegram = async () => {
-    try {
-      await testTelegram();
-      flash('测试消息已发送');
-    } catch (err) { flash(err.response?.data?.detail || '发送失败', 'error'); }
+    try { await testTelegram(); toast.success('测试消息已发送'); }
+    catch (e) { err(e, '发送失败'); }
   };
-
   const handleSaveProxy = async () => {
     try {
-      await updateSettings({
-        outbound_proxy_url: proxyUrl.trim(),
-        outbound_proxy_enabled: proxyEnabled,
-      });
-      flash('代理配置已保存');
-    } catch (err) { flash(err.response?.data?.detail || '保存失败', 'error'); }
+      await updateSettings({ outbound_proxy_url: proxyUrl.trim(), outbound_proxy_enabled: proxyEnabled });
+      toast.success('代理配置已保存');
+    } catch (e) { err(e, '保存失败'); }
   };
-
   const handleTestProxy = async () => {
     try {
       const res = await testProxy();
-      flash(res.data?.message || '代理连通正常');
-    } catch (err) {
-      const d = err.response?.data?.detail;
-      flash(typeof d === 'string' ? d : (d?.message || '代理测试失败'), 'error');
+      toast.success(res.data?.message || '代理连通正常');
+    } catch (e) {
+      const d = e.response?.data?.detail;
+      toast.error(typeof d === 'string' ? d : (d?.message || '代理测试失败'));
     }
   };
-
   const handleChangePassword = async () => {
     try {
       await changePassword(oldPwd, newPwd);
-      flash('密码修改成功');
+      toast.success('密码修改成功');
       setOldPwd(''); setNewPwd('');
-    } catch (err) { flash(err.response?.data?.detail || '修改失败', 'error'); }
+    } catch (e) { err(e, '修改失败'); }
   };
-
   const handleChangeUsername = async () => {
     if (!newUsername.trim() || !usernamePwd) return;
     try {
       await changeUsername(newUsername.trim(), usernamePwd);
-      flash('用户名修改成功，请重新登录');
+      toast.success('用户名修改成功，请重新登录');
       setCurrentUsername(newUsername.trim());
       setNewUsername(''); setUsernamePwd('');
-    } catch (err) { flash(err.response?.data?.detail || '修改失败', 'error'); }
+    } catch (e) { err(e, '修改失败'); }
   };
-
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
     try {
       await createCategory({ name: newCatName.trim() });
       setNewCatName('');
-      flash('分类已添加');
+      toast.success('分类已添加');
       await load();
-    } catch (err) { flash(err.response?.data?.detail || '添加失败', 'error'); }
+    } catch (e) { err(e, '添加失败'); }
   };
-
-  const handleDeleteCategory = async (id) => {
-    if (!confirm('确认删除该分类？')) return;
+  const handleDeleteCategory = async () => {
+    if (!catToDelete) return;
     try {
-      await deleteCategory(id);
-      flash('分类已删除');
+      await deleteCategory(catToDelete.id);
+      setCatToDelete(null);
+      toast.success('分类已删除');
       await load();
-    } catch (err) { flash(err.response?.data?.detail || '删除失败', 'error'); }
+    } catch (e) { err(e, '删除失败'); }
   };
-
   const handleRenameCategory = async (catId) => {
     if (!editingCat || !editingCat.name.trim()) return;
     try {
       await updateCategory(catId, { name: editingCat.name.trim() });
       setEditingCat(null);
-      flash('分类已重命名');
+      toast.success('分类已重命名');
       await load();
-    } catch (err) { flash(err.response?.data?.detail || '重命名失败', 'error'); }
+    } catch (e) { err(e, '重命名失败'); }
   };
-
   const handleAddRate = async () => {
     if (!newRateValue || !settings?.unified_currency) return;
     try {
@@ -179,170 +161,183 @@ export default function SettingsPage() {
         rate: parseFloat(newRateValue),
         is_manual: newRateManual,
       });
-      flash('汇率已保存');
+      toast.success('汇率已保存');
       setNewRateValue('');
       await load();
-    } catch (err) { flash('保存失败', 'error'); }
+    } catch (e) { err(e, '保存失败'); }
+  };
+  const saveRate = async (base, rate, is_manual, okMsg) => {
+    try {
+      await updateExchangeRate({ base_currency: base, target_currency: settings.unified_currency, rate, is_manual });
+      toast.success(okMsg);
+      await load();
+    } catch (e) { err(e, '更新失败'); }
   };
 
-  if (loading) return <div className="loading"><span className="spinner"></span>加载中...</div>;
+  if (loading) return <LoadingBlock />;
+
+  const visibleRates = rates.filter((r) => r.target_currency === settings?.unified_currency);
 
   return (
     <div>
-      <div className="page-header"><h1>⚙️ 系统设置</h1></div>
+      <PageHeader icon="fas fa-gear" title="系统设置" />
 
-      {msg.text && <div className={`alert alert-${msg.type}`}>{msg.text}</div>}
-
-      {/* Unified Currency */}
-      <div className="card settings-section">
-        <h3>💱 统一币种</h3>
+      <div className="card">
+        <div className="card-title"><i className="fas fa-coins" />统一币种</div>
         {settings?.unified_currency_locked ? (
-          <div className="alert alert-info">
-            统一币种已锁定为 <strong>{settings.unified_currency}</strong>（设置后不可修改）
+          <div className="alert alert-info" style={{ marginBottom: 0 }}>
+            <i className="fas fa-lock" />
+            统一币种已锁定为 <strong>&nbsp;{settings.unified_currency}</strong>（设置后不可修改）
           </div>
         ) : (
           <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-            <div className="form-group" style={{ margin: 0 }}>
-              <label>选择统一币种</label>
-              <select className="form-control" value={unifiedCurrency}
+            <Field label="选择统一币种" className="u-mb0" htmlFor="s-unified">
+              <select id="s-unified" className="form-control" value={unifiedCurrency}
                 onChange={(e) => setUnifiedCurrency(e.target.value)}>
-                <option value="">-- 请选择 --</option>
-                {CURRENCY_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                <option value="">— 请选择 —</option>
+                {CURRENCY_OPTIONS.map((c) => <option key={c} value={c}>{c}</option>)}
               </select>
-            </div>
-            <button className="btn btn-primary" onClick={handleSaveUnified} disabled={!unifiedCurrency}>
-              设置并锁定
-            </button>
+            </Field>
+            <Button variant="primary" onClick={handleSaveUnified} disabled={!unifiedCurrency}>设置并锁定</Button>
           </div>
         )}
       </div>
 
-      {/* Exchange Rate API */}
-      <div className="card settings-section">
-        <h3>🔑 汇率 API</h3>
+      <div className="card">
+        <div className="card-title"><i className="fas fa-key" />汇率 API</div>
         <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
-          <div className="form-group" style={{ margin: 0, flex: 1 }}>
-            <label>ExchangeRate-API Key（可选）</label>
-            <input type="text" className="form-control" value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)} placeholder="留空则使用手动汇率" />
-          </div>
-          <button className="btn btn-primary" onClick={handleSaveApi}>保存</button>
+          <Field label="ExchangeRate-API Key（可选）" className="u-mb0" htmlFor="s-apikey"
+            hint="留空则始终使用手动汇率">
+            <input id="s-apikey" type="text" className="form-control" value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)} placeholder="留空则使用手动汇率" style={{ minWidth: 280 }} />
+          </Field>
+          <Button variant="primary" onClick={handleSaveApi}>保存</Button>
         </div>
       </div>
 
-      {/* Exchange Rates */}
       {settings?.unified_currency && (
-      <div className="card settings-section">
-        <h3>💹 汇率管理 <span style={{ fontSize: 12, fontWeight: 400, color: 'var(--text-muted)' }}>（其他币种 → {settings.unified_currency}）</span></h3>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 16 }}>
-          勾选「手动」后该币种汇率不会被 API 覆盖。直接修改数值后点击保存即可更新。
-        </p>
-
-        {/* Existing rates - inline editable */}
-        {rates.filter(r => r.target_currency === settings.unified_currency).map(r => (
-          <div key={r.id} className="rate-row" style={{ alignItems: 'center' }}>
-            <span className="rate-currencies" style={{ minWidth: 80 }}>1 {r.base_currency} =</span>
-            <input type="number" step="0.0001" className="form-control"
-              style={{ width: 130, padding: '6px 10px', fontSize: 14, fontWeight: 600 }}
-              defaultValue={parseFloat(r.rate).toFixed(4)}
-              onBlur={async (e) => {
-                const val = parseFloat(e.target.value);
-                if (isNaN(val) || val === parseFloat(r.rate)) return;
-                try {
-                  await updateExchangeRate({
-                    base_currency: r.base_currency,
-                    target_currency: settings.unified_currency,
-                    rate: val,
-                    is_manual: r.is_manual,
-                  });
-                  flash(`${r.base_currency} 汇率已更新`);
-                  await load();
-                } catch { flash('更新失败', 'error'); }
-              }}
-              onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-            />
-            <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>{settings.unified_currency}</span>
-            <label className="checkbox-group" style={{ fontSize: 12, marginLeft: 8 }}>
-              <input type="checkbox" defaultChecked={r.is_manual}
-                onChange={async (e) => {
-                  try {
-                    await updateExchangeRate({
-                      base_currency: r.base_currency,
-                      target_currency: settings.unified_currency,
-                      rate: parseFloat(r.rate),
-                      is_manual: e.target.checked,
-                    });
-                    flash(e.target.checked ? `${r.base_currency} 已锁定为手动` : `${r.base_currency} 已切换为 API 自动`);
-                    await load();
-                  } catch { flash('更新失败', 'error'); }
+        <div className="card">
+          <div className="card-title">
+            <i className="fas fa-arrow-right-arrow-left" />汇率管理
+            <span className="u-muted" style={{ fontSize: 13, fontWeight: 400 }}>其他币种 → {settings.unified_currency}</span>
+          </div>
+          <p className="field-hint" style={{ marginBottom: 12 }}>
+            勾选「手动」后该币种汇率不会被 API 覆盖。修改数值后失焦即保存。
+          </p>
+          {visibleRates.map((r) => (
+            <div key={r.id} className="rate-row">
+              <span className="rate-currencies">1 {r.base_currency} =</span>
+              <input type="number" step="0.0001" className="form-control"
+                style={{ width: 130, fontWeight: 600 }}
+                defaultValue={parseFloat(r.rate).toFixed(4)}
+                onBlur={(e) => {
+                  const val = parseFloat(e.target.value);
+                  if (Number.isNaN(val) || val === parseFloat(r.rate)) return;
+                  saveRate(r.base_currency, val, r.is_manual, `${r.base_currency} 汇率已更新`);
                 }}
-              /> 手动
+                onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }} />
+              <span className="u-muted" style={{ fontSize: 13 }}>{settings.unified_currency}</span>
+              <label className="checkbox-group" style={{ fontSize: 12, marginLeft: 4 }}>
+                <input type="checkbox" defaultChecked={r.is_manual}
+                  onChange={(e) => saveRate(r.base_currency, parseFloat(r.rate), e.target.checked,
+                    e.target.checked ? `${r.base_currency} 已锁定为手动` : `${r.base_currency} 已切换为 API 自动`)} />
+                手动
+              </label>
+            </div>
+          ))}
+          <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+            <Field label="添加币种" className="u-mb0">
+              <select className="form-control" style={{ width: 100 }} value={newRateCurrency}
+                onChange={(e) => setNewRateCurrency(e.target.value)}>
+                {CURRENCY_OPTIONS
+                  .filter((c) => c !== settings.unified_currency)
+                  .filter((c) => !visibleRates.some((r) => r.base_currency === c))
+                  .map((c) => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </Field>
+            <span className="u-muted" style={{ paddingBottom: 9 }}>→ {settings.unified_currency}</span>
+            <input type="number" step="0.0001" className="form-control" style={{ width: 130 }}
+              value={newRateValue} onChange={(e) => setNewRateValue(e.target.value)} placeholder="如 7.2500" />
+            <label className="checkbox-group" style={{ paddingBottom: 8, fontSize: 12 }}>
+              <input type="checkbox" checked={newRateManual} onChange={(e) => setNewRateManual(e.target.checked)} />
+              手动
             </label>
+            <Button variant="primary" size="sm" onClick={handleAddRate}>添加</Button>
           </div>
-        ))}
-
-        {/* Add new currency rate */}
-        <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border-color)' }}>
-          <div className="form-group" style={{ margin: 0 }}>
-            <label style={{ fontSize: 12 }}>添加币种</label>
-            <select className="form-control" style={{ width: 100 }} value={newRateCurrency}
-              onChange={(e) => setNewRateCurrency(e.target.value)}>
-              {CURRENCY_OPTIONS
-                .filter(c => c !== settings.unified_currency)
-                .filter(c => !rates.some(r => r.base_currency === c && r.target_currency === settings.unified_currency))
-                .map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-          </div>
-          <span style={{ color: 'var(--text-muted)', paddingBottom: 10 }}>→ {settings.unified_currency}</span>
-          <input type="number" step="0.0001" className="form-control" style={{ width: 130 }}
-            value={newRateValue} onChange={(e) => setNewRateValue(e.target.value)} placeholder="如 7.2500" />
-          <label className="checkbox-group" style={{ paddingBottom: 6, fontSize: 12 }}>
-            <input type="checkbox" checked={newRateManual}
-              onChange={(e) => setNewRateManual(e.target.checked)} /> 手动
-          </label>
-          <button className="btn btn-primary btn-sm" onClick={handleAddRate}>添加</button>
         </div>
-      </div>
       )}
 
-      {/* Categories */}
-      <div className="card settings-section">
-        <h3>📂 分类管理</h3>
+      <div className="card">
+        <div className="card-title"><i className="fas fa-globe" />网络代理</div>
+        <p className="field-hint" style={{ marginBottom: 12 }}>
+          仅用于对外请求：Telegram 通知、网站图标获取、汇率 API。留空或不启用时行为不变。
+          支持 <code>socks5://</code>、<code>socks5h://</code>、<code>http://</code>、<code>https://</code>，可带 <code>user:pass@</code>。
+        </p>
+        <Field label="代理地址" htmlFor="s-proxy">
+          <input id="s-proxy" type="text" className="form-control" value={proxyUrl}
+            onChange={(e) => setProxyUrl(e.target.value)} placeholder="socks5://127.0.0.1:1080" />
+        </Field>
+        <Field>
+          <label className="checkbox-group">
+            <input type="checkbox" checked={proxyEnabled} onChange={(e) => setProxyEnabled(e.target.checked)} />
+            启用代理
+          </label>
+        </Field>
+        <div className="btn-group">
+          <Button variant="primary" onClick={handleSaveProxy}>保存配置</Button>
+          <Button onClick={handleTestProxy}>测试连通性</Button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title"><i className="fas fa-paper-plane" />Telegram 通知</div>
+        <Field label="Bot Token" htmlFor="s-tgtoken">
+          <input id="s-tgtoken" type="text" className="form-control" value={tgToken}
+            onChange={(e) => setTgToken(e.target.value)} placeholder="从 @BotFather 获取" />
+        </Field>
+        <Field label="Chat ID" htmlFor="s-tgchat">
+          <input id="s-tgchat" type="text" className="form-control" value={tgChatId}
+            onChange={(e) => setTgChatId(e.target.value)} placeholder="个人 / 群组 Chat ID" />
+        </Field>
+        <Field>
+          <label className="checkbox-group">
+            <input type="checkbox" checked={tgEnabled} onChange={(e) => setTgEnabled(e.target.checked)} />
+            启用 Telegram 通知
+          </label>
+        </Field>
+        <div className="btn-group">
+          <Button variant="primary" onClick={handleSaveTelegram}>保存配置</Button>
+          <Button onClick={handleTestTelegram}>发送测试消息</Button>
+        </div>
+      </div>
+
+      <div className="card">
+        <div className="card-title"><i className="fas fa-folder" />分类管理</div>
         {categories.length > 0 && (
           <div style={{ marginBottom: 16 }}>
-            {categories.map(c => (
+            {categories.map((c) => (
               <div key={c.id} className="rate-row">
-                {editingCat && editingCat.id === c.id ? (
+                {editingCat?.id === c.id ? (
                   <>
-                    <input type="text" className="form-control" style={{ flex: 1, padding: '4px 8px', fontSize: 14 }}
+                    <input type="text" className="form-control" style={{ flex: 1 }}
                       value={editingCat.name}
-                      onChange={(e) => setEditingCat(p => ({ ...p, name: e.target.value }))}
-                      onKeyDown={(e) => { if (e.key === 'Enter') handleRenameCategory(c.id); if (e.key === 'Escape') setEditingCat(null); }}
+                      onChange={(e) => setEditingCat((p) => ({ ...p, name: e.target.value }))}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') handleRenameCategory(c.id);
+                        if (e.key === 'Escape') setEditingCat(null);
+                      }}
                       autoFocus />
-                    <button className="btn btn-primary btn-sm" onClick={() => handleRenameCategory(c.id)}
-                      style={{ padding: '4px 8px' }}>
-                      <i className="fas fa-check"></i>
-                    </button>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setEditingCat(null)}
-                      style={{ padding: '4px 8px' }}>
-                      <i className="fas fa-times"></i>
-                    </button>
+                    <Button size="sm" variant="primary" icon="fas fa-check" onClick={() => handleRenameCategory(c.id)} />
+                    <Button size="sm" icon="fas fa-xmark" onClick={() => setEditingCat(null)} />
                   </>
                 ) : (
                   <>
                     <span style={{ flex: 1, fontWeight: 600 }}>
-                      {c.icon && <i className={c.icon} style={{ marginRight: 8 }}></i>}
-                      {c.name}
+                      {c.icon && <i className={c.icon} style={{ marginRight: 8 }} />}{c.name}
                     </span>
-                    <span style={{ color: 'var(--text-muted)', fontSize: 12 }}>{c.subscription_count} 个订阅</span>
-                    <button className="btn btn-secondary btn-sm" onClick={() => setEditingCat({ id: c.id, name: c.name })}
-                      style={{ padding: '4px 8px' }}>
-                      <i className="fas fa-edit"></i>
-                    </button>
-                    <button className="btn btn-danger btn-sm" onClick={() => handleDeleteCategory(c.id)}
-                      style={{ padding: '4px 8px' }}>
-                      <i className="fas fa-trash"></i>
-                    </button>
+                    <span className="u-muted" style={{ fontSize: 12 }}>{c.subscription_count} 个订阅</span>
+                    <Button size="sm" variant="ghost" icon="fas fa-pen" onClick={() => setEditingCat({ id: c.id, name: c.name })} />
+                    <Button size="sm" variant="ghost" icon="fas fa-trash" onClick={() => setCatToDelete(c)} />
                   </>
                 )}
               </div>
@@ -351,99 +346,57 @@ export default function SettingsPage() {
         )}
         <div style={{ display: 'flex', gap: 8 }}>
           <input type="text" className="form-control" value={newCatName}
-            onChange={(e) => setNewCatName(e.target.value)} placeholder="新分类名称" />
-          <button className="btn btn-primary btn-sm" onClick={handleAddCategory}>添加</button>
+            onChange={(e) => setNewCatName(e.target.value)} placeholder="新分类名称"
+            onKeyDown={(e) => { if (e.key === 'Enter') handleAddCategory(); }} />
+          <Button variant="primary" size="sm" onClick={handleAddCategory}>添加</Button>
         </div>
       </div>
 
-      {/* Outbound proxy */}
-      <div className="card settings-section">
-        <h3>🌐 网络代理</h3>
-        <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-          仅用于对外请求：Telegram 通知、网站图标获取、汇率 API。留空或不启用时行为不变。
-          支持 <code>socks5://</code>、<code>socks5h://</code>、<code>http://</code>、<code>https://</code>，可带 <code>user:pass@</code>。
+      <div className="card">
+        <div className="card-title"><i className="fas fa-user-shield" />账号安全</div>
+        <p className="field-hint" style={{ marginBottom: 12 }}>当前用户名：<strong>{currentUsername}</strong></p>
+        <div className="form-row">
+          <Field label="新用户名" htmlFor="s-newuser">
+            <input id="s-newuser" type="text" className="form-control" value={newUsername}
+              onChange={(e) => setNewUsername(e.target.value)} placeholder="输入新用户名" />
+          </Field>
+          <Field label="验证密码" htmlFor="s-userpwd">
+            <input id="s-userpwd" type="password" className="form-control" value={usernamePwd}
+              onChange={(e) => setUsernamePwd(e.target.value)} placeholder="输入当前密码确认" />
+          </Field>
+        </div>
+        <Button size="sm" variant="primary" onClick={handleChangeUsername}
+          disabled={!newUsername.trim() || !usernamePwd}>修改用户名</Button>
+
+        <hr />
+
+        <div className="form-row">
+          <Field label="原密码" htmlFor="s-oldpwd">
+            <input id="s-oldpwd" type="password" className="form-control" value={oldPwd}
+              onChange={(e) => setOldPwd(e.target.value)} />
+          </Field>
+          <Field label="新密码" htmlFor="s-newpwd">
+            <input id="s-newpwd" type="password" className="form-control" value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)} />
+          </Field>
+        </div>
+        <Button size="sm" variant="primary" onClick={handleChangePassword}
+          disabled={!oldPwd || !newPwd}>修改密码</Button>
+      </div>
+
+      <Modal
+        open={!!catToDelete}
+        onClose={() => setCatToDelete(null)}
+        title="删除分类"
+        footer={<>
+          <Button onClick={() => setCatToDelete(null)}>取消</Button>
+          <Button variant="danger" onClick={handleDeleteCategory}>确认删除</Button>
+        </>}
+      >
+        <p style={{ color: 'var(--text-secondary)' }}>
+          确认删除分类「{catToDelete?.name}」吗？该分类下的订阅会变为未分类。
         </p>
-        <div className="form-group">
-          <label>代理地址</label>
-          <input type="text" className="form-control" value={proxyUrl}
-            onChange={(e) => setProxyUrl(e.target.value)}
-            placeholder="socks5://127.0.0.1:1080" />
-        </div>
-        <div className="form-group">
-          <label className="checkbox-group">
-            <input type="checkbox" checked={proxyEnabled}
-              onChange={(e) => setProxyEnabled(e.target.checked)} /> 启用代理
-          </label>
-        </div>
-        <div className="btn-group">
-          <button className="btn btn-primary" onClick={handleSaveProxy}>保存配置</button>
-          <button className="btn btn-secondary" onClick={handleTestProxy}>测试连通性</button>
-        </div>
-      </div>
-
-      {/* Telegram */}
-      <div className="card settings-section">
-        <h3>📱 Telegram 通知</h3>
-        <div className="form-group">
-          <label>Bot Token</label>
-          <input type="text" className="form-control" value={tgToken}
-            onChange={(e) => setTgToken(e.target.value)} placeholder="从 @BotFather 获取" />
-        </div>
-        <div className="form-group">
-          <label>Chat ID</label>
-          <input type="text" className="form-control" value={tgChatId}
-            onChange={(e) => setTgChatId(e.target.value)} placeholder="个人/群组 Chat ID" />
-        </div>
-        <div className="form-group">
-          <label className="checkbox-group">
-            <input type="checkbox" checked={tgEnabled}
-              onChange={(e) => setTgEnabled(e.target.checked)} /> 启用 Telegram 通知
-          </label>
-        </div>
-        <div className="btn-group">
-          <button className="btn btn-primary" onClick={handleSaveTelegram}>保存配置</button>
-          <button className="btn btn-secondary" onClick={handleTestTelegram}>发送测试消息</button>
-        </div>
-      </div>
-
-      {/* Password */}
-      <div className="card settings-section">
-        <h3>🔒 账号安全</h3>
-        <div style={{ marginBottom: 20 }}>
-          <p style={{ fontSize: 13, color: 'var(--text-secondary)', marginBottom: 12 }}>
-            当前用户名：<strong>{currentUsername}</strong>
-          </p>
-          <div className="form-row">
-            <div className="form-group">
-              <label>新用户名</label>
-              <input type="text" className="form-control" value={newUsername}
-                onChange={(e) => setNewUsername(e.target.value)} placeholder="输入新用户名" />
-            </div>
-            <div className="form-group">
-              <label>验证密码</label>
-              <input type="password" className="form-control" value={usernamePwd}
-                onChange={(e) => setUsernamePwd(e.target.value)} placeholder="输入当前密码确认" />
-            </div>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={handleChangeUsername}
-            disabled={!newUsername.trim() || !usernamePwd}>修改用户名</button>
-        </div>
-        <div style={{ borderTop: '1px solid var(--border-color)', paddingTop: 20 }}>
-          <div className="form-row">
-            <div className="form-group">
-              <label>原密码</label>
-              <input type="password" className="form-control" value={oldPwd}
-                onChange={(e) => setOldPwd(e.target.value)} />
-            </div>
-            <div className="form-group">
-              <label>新密码</label>
-              <input type="password" className="form-control" value={newPwd}
-                onChange={(e) => setNewPwd(e.target.value)} />
-            </div>
-          </div>
-          <button className="btn btn-primary btn-sm" onClick={handleChangePassword}>修改密码</button>
-        </div>
-      </div>
+      </Modal>
     </div>
   );
 }

@@ -131,7 +131,10 @@
   padding: var(--sp-8) var(--sp-8) var(--sp-10);
 }
 .main-content > .page,
-.page { max-width: 1120px; }
+.page {
+  max-width: var(--page-max);
+  margin-inline: auto;
+}
 
 .mobile-header { display: none; }
 .sidebar-overlay { display: none; }

@@ -78,6 +78,7 @@
 
   --transition: 150ms ease;
   --sidebar-w: 236px;
+  --page-max: 1280px;
 }
 
 :root[data-theme="dark"] {

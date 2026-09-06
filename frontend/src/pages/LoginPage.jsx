@@ -4,6 +4,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { login } from '../services/api';
+import { Button, Field } from '../components/ui';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -16,7 +17,6 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setLoading(true);
-
     try {
       const res = await login(username, password);
       localStorage.setItem('token', res.data.access_token);
@@ -31,25 +31,26 @@ export default function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        <h1><i className="fas fa-layer-group"></i> SubscribeManage</h1>
+        <div className="login-brand">
+          <i className="fas fa-layer-group" />
+          SubscribeManage
+        </div>
         <p className="subtitle">订阅管理系统</p>
 
-        {error && <div className="alert alert-error">{error}</div>}
+        {error && <div className="alert alert-error"><i className="fas fa-circle-exclamation" />{error}</div>}
 
         <form onSubmit={handleSubmit}>
-          <div className="form-group">
-            <label>用户名</label>
-            <input type="text" className="form-control" value={username}
+          <Field label="用户名" htmlFor="login-username">
+            <input id="login-username" type="text" className="form-control" value={username}
               onChange={(e) => setUsername(e.target.value)} placeholder="请输入用户名" required />
-          </div>
-          <div className="form-group">
-            <label>密码</label>
-            <input type="password" className="form-control" value={password}
+          </Field>
+          <Field label="密码" htmlFor="login-password">
+            <input id="login-password" type="password" className="form-control" value={password}
               onChange={(e) => setPassword(e.target.value)} placeholder="请输入密码" required />
-          </div>
-          <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-            {loading ? <><span className="spinner" style={{width:16,height:16,borderWidth:2,marginRight:8}}></span>登录中...</> : '登录'}
-          </button>
+          </Field>
+          <Button type="submit" variant="primary" block loading={loading} style={{ marginTop: 4 }}>
+            {loading ? '登录中…' : '登录'}
+          </Button>
         </form>
       </div>
     </div>

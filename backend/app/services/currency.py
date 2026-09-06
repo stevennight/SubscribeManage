@@ -4,10 +4,10 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Optional
 
-import httpx
 from sqlalchemy.orm import Session
 
 from app.models import ExchangeRate, SystemConfig
+from app.services.http_proxy import build_async_client, get_proxy_url
 
 logger = logging.getLogger(__name__)
 
@@ -58,11 +58,16 @@ def calc_monthly_cost(cost_unified: Decimal, cycle_amount: int, cycle_unit: str)
     return cost_unified
 
 
-async def fetch_rates_from_api(api_key: str, base_currency: str) -> Optional[dict]:
-    """Fetch exchange rates from ExchangeRate-API."""
+async def fetch_rates_from_api(
+    api_key: str, base_currency: str, proxy: Optional[str] = None
+) -> Optional[dict]:
+    """Fetch exchange rates from ExchangeRate-API.
+
+    Optionally routed through ``proxy`` (SOCKS/HTTP).
+    """
     url = f"https://v6.exchangerate-api.com/v6/{api_key}/latest/{base_currency}"
     try:
-        async with httpx.AsyncClient(timeout=15) as client:
+        async with build_async_client(proxy, timeout=15) as client:
             resp = await client.get(url)
             if resp.status_code == 200:
                 data = resp.json()
@@ -74,9 +79,12 @@ async def fetch_rates_from_api(api_key: str, base_currency: str) -> Optional[dic
     return None
 
 
-async def update_rates_for_currency(db: Session, api_key: str, base_currency: str, target_currencies: list[str]):
+async def update_rates_for_currency(
+    db: Session, api_key: str, base_currency: str, target_currencies: list[str],
+    proxy: Optional[str] = None,
+):
     """Update exchange rates from API for specific currency pairs."""
-    rates = await fetch_rates_from_api(api_key, base_currency)
+    rates = await fetch_rates_from_api(api_key, base_currency, proxy)
     if not rates:
         return
 
@@ -120,7 +128,7 @@ async def fetch_and_cache_rate(db: Session, from_currency: str, to_currency: str
     # Try API
     api_key = get_api_key(db)
     if api_key:
-        rates = await fetch_rates_from_api(api_key, from_currency.upper())
+        rates = await fetch_rates_from_api(api_key, from_currency.upper(), get_proxy_url(db))
         if rates and to_currency.upper() in rates:
             rate = Decimal(str(rates[to_currency.upper()]))
             db.add(ExchangeRate(

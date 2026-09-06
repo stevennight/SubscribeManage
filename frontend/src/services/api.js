@@ -46,6 +46,7 @@ export const changeUsername = (new_username, password) =>
 export const getSettings = () => api.get('/api/settings');
 export const updateSettings = (data) => api.put('/api/settings', data);
 export const testTelegram = () => api.post('/api/settings/test-telegram');
+export const testProxy = () => api.post('/api/settings/test-proxy');
 export const getExchangeRates = () => api.get('/api/settings/exchange-rates');
 export const updateExchangeRate = (data) => api.put('/api/settings/exchange-rates', data);
 

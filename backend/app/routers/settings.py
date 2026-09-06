@@ -9,6 +9,7 @@ from app.schemas import (
     SettingsResponse, SettingsUpdate,
     ExchangeRateResponse, ExchangeRateUpdate,
 )
+from app.services.http_proxy import build_async_client, get_proxy_url, validate_proxy_url
 
 router = APIRouter(prefix="/api/settings", tags=["Settings"])
 
@@ -41,6 +42,8 @@ def get_settings(
         telegram_bot_token=get_config_value(db, "telegram_bot_token") or "",
         telegram_chat_id=get_config_value(db, "telegram_chat_id") or "",
         telegram_enabled=get_config_value(db, "telegram_enabled") == "true",
+        outbound_proxy_url=get_config_value(db, "outbound_proxy_url") or "",
+        outbound_proxy_enabled=get_config_value(db, "outbound_proxy_enabled") == "true",
     )
 
 
@@ -73,6 +76,22 @@ def update_settings(
 
     if request.telegram_enabled is not None:
         set_config_value(db, "telegram_enabled", "true" if request.telegram_enabled else "false")
+
+    if request.outbound_proxy_url is not None:
+        try:
+            cleaned = validate_proxy_url(request.outbound_proxy_url)
+        except ValueError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e),
+            )
+        set_config_value(db, "outbound_proxy_url", cleaned)
+
+    if request.outbound_proxy_enabled is not None:
+        set_config_value(
+            db, "outbound_proxy_enabled",
+            "true" if request.outbound_proxy_enabled else "false",
+        )
 
     db.commit()
     return {"message": "设置已更新"}
@@ -136,7 +155,8 @@ async def test_telegram(
 
     success = await send_telegram_message(
         bot_token, chat_id,
-        "🔔 SubscribeManage 测试通知\n\n✅ Telegram 通知配置成功！"
+        "🔔 SubscribeManage 测试通知\n\n✅ Telegram 通知配置成功！",
+        proxy=get_proxy_url(db),
     )
 
     if not success:
@@ -146,3 +166,41 @@ async def test_telegram(
         )
 
     return {"message": "测试消息已发送"}
+
+
+@router.post("/test-proxy")
+async def test_proxy(
+    _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Check that the configured outbound proxy can reach the blocked hosts."""
+    proxy = get_config_value(db, "outbound_proxy_url")
+    if not proxy:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="请先填写代理地址",
+        )
+    try:
+        validate_proxy_url(proxy)
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+    targets = {
+        "Telegram": "https://api.telegram.org",
+        "Google": "https://www.google.com/generate_204",
+    }
+    results = {}
+    for name, url in targets.items():
+        try:
+            async with build_async_client(proxy, timeout=10, follow_redirects=True) as client:
+                resp = await client.get(url)
+                results[name] = f"ok ({resp.status_code})"
+        except Exception as e:  # noqa: BLE001 - report any failure to the user
+            results[name] = f"failed: {e}"
+
+    if all(v.startswith("ok") for v in results.values()):
+        return {"message": "代理连通正常", "details": results}
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail={"message": "代理无法连通部分目标", "details": results},
+    )

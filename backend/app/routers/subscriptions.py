@@ -567,10 +567,12 @@ def delete_payment(
 async def fetch_favicon_endpoint(
     request: FaviconRequest,
     _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
 ):
     """Fetch favicon for a URL."""
     from app.services.favicon import fetch_favicon
-    favicon_url = await fetch_favicon(request.url)
+    from app.services.http_proxy import get_proxy_url
+    favicon_url = await fetch_favicon(request.url, get_proxy_url(db))
     return FaviconResponse(favicon_url=favicon_url, success=favicon_url is not None)
 
 

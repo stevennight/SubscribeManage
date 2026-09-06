@@ -15,7 +15,7 @@ cd SubscribeManage
 cp .env.example .env
 ```
 
-Set `SUBSCRIBEMANAGE_VERSION` in `.env` to an exact release tag, for example `v0.1.3`. Set a production `SECRET_KEY` and default credentials before starting. If the GHCR packages are private, log in with a GitHub token that has `read:packages`:
+Set `SUBSCRIBEMANAGE_VERSION` in `.env` to an exact release tag, for example `v0.1.4`. Set a production `SECRET_KEY` and default credentials before starting. If the GHCR packages are private, log in with a GitHub token that has `read:packages`:
 
 ```bash
 echo "$GHCR_TOKEN" | docker login ghcr.io -u stevennight --password-stdin
@@ -58,8 +58,8 @@ This uses `subscribemanage-backend:local` and `subscribemanage-frontend:local`; 
 Push a SemVer tag with the `v` prefix:
 
 ```bash
-git tag v0.1.3
-git push origin v0.1.3
+git tag v0.1.4
+git push origin v0.1.4
 ```
 
 The release workflow validates the tag, builds both images for `linux/amd64` and `linux/arm64`, pushes versioned GHCR tags, and publishes GitHub release notes. Normal pushes and pull requests run backend/frontend checks and build both Docker images without pushing them.

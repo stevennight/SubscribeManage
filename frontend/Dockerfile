@@ -1,5 +1,10 @@
-# Build stage
-FROM node:20-alpine AS build
+# syntax=docker/dockerfile:1.7
+
+# Build stage — always runs on the builder's native arch (never emulated).
+# The output (static files in /app/dist) is architecture-independent, so there
+# is no reason to run Node/npm under QEMU for arm64: doing so crashes with
+# "qemu: uncaught target signal 4 (Illegal instruction)".
+FROM --platform=$BUILDPLATFORM node:20-alpine AS build
 ARG SUBSCRIBEMANAGE_VERSION=0.1.0-dev
 WORKDIR /app
 COPY package*.json ./
@@ -8,7 +13,7 @@ COPY . .
 ENV VITE_APP_VERSION=${SUBSCRIBEMANAGE_VERSION}
 RUN npm run build
 
-# Production stage
+# Production stage — built per target arch, but only copies prebuilt assets.
 FROM nginx:alpine
 ARG SUBSCRIBEMANAGE_VERSION=0.1.0-dev
 ARG SUBSCRIBEMANAGE_COMMIT=

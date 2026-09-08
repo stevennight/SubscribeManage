@@ -63,8 +63,9 @@ class Subscription(Base):
     cost_original = Column(Numeric(12, 2), nullable=False)
     currency_original = Column(String(10), nullable=False, default="USD")
     cost_unified = Column(Numeric(12, 2), nullable=True)  # converted to unified currency
-    exchange_rate = Column(Numeric(16, 6), nullable=True)
+    exchange_rate = Column(Numeric(16, 6), nullable=True)  # projection rate (may include buffer)
     monthly_cost = Column(Numeric(12, 2), nullable=True)  # monthly cost in unified currency
+    rate_asof = Column(Date, nullable=True)  # date the projection rate was computed as-of
 
     # Dates
     start_date = Column(Date, nullable=True)
@@ -131,15 +132,20 @@ class PaymentHistory(Base):
 
     cost_original = Column(Numeric(12, 2), nullable=False)
     currency_original = Column(String(10), nullable=False)
-    cost_unified = Column(Numeric(12, 2), nullable=True)
+    cost_unified = Column(Numeric(12, 2), nullable=True)  # estimate: cost_original * rate on payment date
+    cost_unified_actual = Column(Numeric(12, 2), nullable=True)  # real amount charged (from bank/card statement)
     unified_currency = Column(String(10), nullable=True)  # redundant record
-    exchange_rate = Column(Numeric(16, 6), nullable=True)
+    exchange_rate = Column(Numeric(16, 6), nullable=True)  # rate as of the payment's start_date
 
     subscription = relationship("Subscription", back_populates="payment_history")
 
 
 class ExchangeRate(Base):
-    """Exchange rate cache with manual/API mode per currency pair."""
+    """Exchange rate cache with manual/API mode per currency pair.
+
+    Holds the single *current* rate per pair — used as a fallback and for the
+    "spot" projection mode. Historical daily values live in ``ExchangeRateHistory``.
+    """
     __tablename__ = "exchange_rates"
 
     id = Column(Integer, primary_key=True, autoincrement=True)
@@ -151,4 +157,25 @@ class ExchangeRate(Base):
 
     __table_args__ = (
         UniqueConstraint("base_currency", "target_currency", name="uq_currency_pair"),
+    )
+
+
+class ExchangeRateHistory(Base):
+    """Daily exchange-rate time series — one row per currency pair per day.
+
+    Feeds the trailing-average projection rate and the "daily rate" viewer.
+    Appended to (never overwritten in place) so history stays auditable.
+    """
+    __tablename__ = "exchange_rate_history"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    base_currency = Column(String(10), nullable=False, index=True)
+    target_currency = Column(String(10), nullable=False, index=True)
+    rate = Column(Numeric(16, 6), nullable=False)
+    rate_date = Column(Date, nullable=False, index=True)  # the date this rate applies to
+    source = Column(String(10), nullable=False, default="api")  # api / manual
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    __table_args__ = (
+        UniqueConstraint("base_currency", "target_currency", "rate_date", name="uq_rate_history_day"),
     )

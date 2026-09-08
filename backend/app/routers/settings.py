@@ -1,13 +1,22 @@
 """System settings API routes."""
-from fastapi import APIRouter, Depends, HTTPException, status
+from datetime import date, datetime, timedelta
+from decimal import Decimal
+
+from fastapi import APIRouter, Depends, HTTPException, Query, status
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app.auth import get_current_user
 from app.database import get_db
-from app.models import SystemConfig, ExchangeRate
+from app.models import Subscription, SystemConfig, ExchangeRate, ExchangeRateHistory
 from app.schemas import (
     SettingsResponse, SettingsUpdate,
     ExchangeRateResponse, ExchangeRateUpdate,
+    ExchangeRateHistoryResponse, ExchangeRateRefreshResponse,
+)
+from app.services.currency import (
+    DEFAULT_PROJECTION_MODE, DEFAULT_PROJECTION_WINDOW_DAYS, DEFAULT_PROJECTION_BUFFER_PCT,
+    get_api_key, update_rates_for_currency,
 )
 from app.services.http_proxy import build_async_client, get_proxy_url, validate_proxy_url
 
@@ -35,6 +44,16 @@ def get_settings(
     db: Session = Depends(get_db),
 ):
     """Get all system settings."""
+    try:
+        window = int(get_config_value(db, "projection_rate_window_days") or DEFAULT_PROJECTION_WINDOW_DAYS)
+    except (TypeError, ValueError):
+        window = DEFAULT_PROJECTION_WINDOW_DAYS
+    try:
+        buffer_pct = Decimal(str(get_config_value(db, "projection_fx_buffer_pct") or DEFAULT_PROJECTION_BUFFER_PCT))
+    except (TypeError, ValueError, ArithmeticError):
+        buffer_pct = DEFAULT_PROJECTION_BUFFER_PCT
+    asof = db.query(func.max(Subscription.rate_asof)).scalar()
+
     return SettingsResponse(
         unified_currency=get_config_value(db, "unified_currency"),
         unified_currency_locked=get_config_value(db, "unified_currency_locked") == "true",
@@ -44,6 +63,10 @@ def get_settings(
         telegram_enabled=get_config_value(db, "telegram_enabled") == "true",
         outbound_proxy_url=get_config_value(db, "outbound_proxy_url") or "",
         outbound_proxy_enabled=get_config_value(db, "outbound_proxy_enabled") == "true",
+        projection_rate_mode=get_config_value(db, "projection_rate_mode") or DEFAULT_PROJECTION_MODE,
+        projection_rate_window_days=window,
+        projection_fx_buffer_pct=buffer_pct,
+        projection_rate_asof=asof,
     )
 
 
@@ -93,7 +116,31 @@ def update_settings(
             "true" if request.outbound_proxy_enabled else "false",
         )
 
+    projection_changed = False
+    if request.projection_rate_mode is not None:
+        if request.projection_rate_mode not in ("rolling_avg", "spot"):
+            raise HTTPException(status_code=400, detail="预估汇率口径无效")
+        set_config_value(db, "projection_rate_mode", request.projection_rate_mode)
+        projection_changed = True
+
+    if request.projection_rate_window_days is not None:
+        if not 1 <= request.projection_rate_window_days <= 730:
+            raise HTTPException(status_code=400, detail="滚动平均窗口需在 1–730 天之间")
+        set_config_value(db, "projection_rate_window_days", str(request.projection_rate_window_days))
+        projection_changed = True
+
+    if request.projection_fx_buffer_pct is not None:
+        if request.projection_fx_buffer_pct < 0 or request.projection_fx_buffer_pct > 100:
+            raise HTTPException(status_code=400, detail="汇率缓冲需在 0–100% 之间")
+        set_config_value(db, "projection_fx_buffer_pct", str(request.projection_fx_buffer_pct))
+        projection_changed = True
+
     db.commit()
+
+    if projection_changed:
+        from app.services.scheduler import refresh_all_projections
+        refresh_all_projections(db)
+
     return {"message": "设置已更新"}
 
 
@@ -133,7 +180,82 @@ def update_exchange_rate(
         ))
 
     db.commit()
+
+    from app.services.currency import record_rate_history
+    record_rate_history(
+        db, request.base_currency, request.target_currency, request.rate,
+        date.today(), source="manual", commit=True,
+    )
+    from app.services.scheduler import refresh_all_projections
+    refresh_all_projections(db)
     return {"message": "汇率已更新"}
+
+
+@router.post("/exchange-rates/refresh", response_model=ExchangeRateRefreshResponse)
+async def refresh_exchange_rates(
+    _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Fetch the latest rates from the API right now (don't wait for the daily job)."""
+    api_key = get_api_key(db)
+    if not api_key:
+        raise HTTPException(status_code=400, detail="请先配置并保存 ExchangeRate-API Key")
+
+    unified = get_config_value(db, "unified_currency")
+    if not unified:
+        raise HTTPException(status_code=400, detail="请先设置统一币种")
+    unified = unified.upper()
+
+    currencies = {
+        r.base_currency.upper()
+        for r in db.query(ExchangeRate).filter(ExchangeRate.target_currency == unified).all()
+    }
+    for (cur,) in db.query(Subscription.currency_original).distinct().all():
+        if cur:
+            currencies.add(cur.upper())
+    currencies.discard(unified)
+
+    if not currencies:
+        return ExchangeRateRefreshResponse(message="没有需要更新的币种", updated=0, currencies=[])
+
+    proxy = get_proxy_url(db)
+    done = []
+    for cur in sorted(currencies):
+        count = await update_rates_for_currency(db, api_key, cur, [unified], proxy)
+        if count:
+            done.append(cur)
+
+    if not done:
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail="未能获取到任何汇率，请检查 API Key、网络或代理设置",
+        )
+
+    from app.services.scheduler import refresh_all_projections
+    refresh_all_projections(db)
+    return ExchangeRateRefreshResponse(
+        message=f"已刷新 {len(done)} 个币种汇率", updated=len(done), currencies=done,
+    )
+
+
+@router.get("/exchange-rates/history", response_model=list[ExchangeRateHistoryResponse])
+def get_exchange_rate_history(
+    base: str = Query(..., min_length=3, max_length=10),
+    target: str | None = Query(None, min_length=3, max_length=10),
+    days: int = Query(90, ge=1, le=730),
+    _: str = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Daily exchange-rate time series for one currency pair."""
+    target = (target or get_config_value(db, "unified_currency") or "").upper()
+    if not target:
+        raise HTTPException(status_code=400, detail="请先设置统一币种")
+    since = date.today() - timedelta(days=days)
+    return db.query(ExchangeRateHistory).filter(
+        ExchangeRateHistory.base_currency == base.upper(),
+        ExchangeRateHistory.target_currency == target,
+        ExchangeRateHistory.rate_date >= since,
+    ).order_by(ExchangeRateHistory.rate_date.asc()).all()
 
 
 @router.post("/test-telegram")

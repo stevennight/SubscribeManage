@@ -61,8 +61,13 @@ def _compute_monthly_report(db: Session, year: int, month: int, unified_currency
         if total_days <= 0:
             continue
 
-        # Use unified cost if available, otherwise original
-        cost = Decimal(str(pay.cost_unified)) if pay.cost_unified is not None else Decimal(str(pay.cost_original))
+        # Prefer the real charged amount, then the estimate, then the raw original.
+        if pay.cost_unified_actual is not None:
+            cost = Decimal(str(pay.cost_unified_actual))
+        elif pay.cost_unified is not None:
+            cost = Decimal(str(pay.cost_unified))
+        else:
+            cost = Decimal(str(pay.cost_original))
         daily_cost = cost / Decimal(str(total_days))
 
         # Calculate overlap days with target month

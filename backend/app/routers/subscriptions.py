@@ -21,6 +21,7 @@ from app.schemas import (
 from app.services.currency import (
     get_unified_currency, convert_currency, calc_monthly_cost,
     get_exchange_rate, fetch_and_cache_rate,
+    compute_projection_rate, get_rate_on_date,
 )
 from app.config import settings as app_settings
 
@@ -42,6 +43,7 @@ def _build_response(sub: Subscription) -> SubscriptionResponse:
         exchange_rate=sub.exchange_rate,
         monthly_cost=sub.monthly_cost,
         monthly_cost_original=sub.monthly_cost_original,
+        rate_asof=sub.rate_asof,
         start_date=sub.start_date,
         end_date=sub.end_date,
         reminder_days=sub.reminder_days,
@@ -270,18 +272,21 @@ async def create_subscription(
             detail="请先在系统设置中配置统一币种，再添加订阅"
         )
 
-    # Calculate unified cost
+    # Calculate projected unified cost (trailing-average or spot rate, plus buffer)
     cost_unified = None
     rate = None
     monthly_cost = None
+    rate_asof = date.today()
 
     if request.currency_original.upper() == unified.upper():
         rate = Decimal("1.0")
         cost_unified = request.cost_original
     else:
-        rate = get_exchange_rate(db, request.currency_original, unified)
+        rate, rate_asof = compute_projection_rate(db, request.currency_original, unified)
         if rate is None:
-            rate = await fetch_and_cache_rate(db, request.currency_original, unified)
+            # No rate on record yet — try a live fetch, then recompute.
+            await fetch_and_cache_rate(db, request.currency_original, unified)
+            rate, rate_asof = compute_projection_rate(db, request.currency_original, unified)
         if rate:
             cost_unified = round(request.cost_original * rate, 2)
 
@@ -294,6 +299,7 @@ async def create_subscription(
         cost_unified=cost_unified,
         exchange_rate=rate,
         monthly_cost=monthly_cost,
+        rate_asof=rate_asof if cost_unified is not None else None,
     )
     db.add(sub)
     db.flush()  # Get the ID
@@ -333,12 +339,15 @@ async def update_subscription(
             if sub.currency_original.upper() == unified.upper():
                 sub.exchange_rate = Decimal("1.0")
                 sub.cost_unified = sub.cost_original
+                sub.rate_asof = date.today()
             else:
-                rate = get_exchange_rate(db, sub.currency_original, unified)
+                rate, asof = compute_projection_rate(db, sub.currency_original, unified)
                 if rate is None:
-                    rate = await fetch_and_cache_rate(db, sub.currency_original, unified)
+                    await fetch_and_cache_rate(db, sub.currency_original, unified)
+                    rate, asof = compute_projection_rate(db, sub.currency_original, unified)
                 sub.exchange_rate = rate
                 sub.cost_unified = round(sub.cost_original * rate, 2) if rate else None
+                sub.rate_asof = asof if rate else None
 
     # Recalculate monthly cost if relevant fields changed
     if any(k in update_data for k in ["cost_original", "currency_original", "cycle_amount", "cycle_unit"]):
@@ -470,13 +479,16 @@ async def add_payment_record(
             rate = Decimal("1.0")
             cost_unified = request.cost_original
         else:
-            rate = get_exchange_rate(db, sub.currency_original, unified)
+            # Historical record: use the rate as of the payment's start date.
+            rate = get_rate_on_date(db, sub.currency_original, unified, request.start_date)
             if rate is None:
                 rate = await fetch_and_cache_rate(db, sub.currency_original, unified)
             if rate:
                 cost_unified = round(request.cost_original * rate, 2)
 
-    monthly_cost = calc_monthly_cost(cost_unified, sub.cycle_amount, sub.cycle_unit) if cost_unified else None
+    actual = request.cost_unified_actual
+    if actual is not None and actual <= 0:
+        actual = None
 
     from datetime import datetime, timezone
     # Create payment history record
@@ -489,6 +501,7 @@ async def add_payment_record(
         cost_original=request.cost_original,
         currency_original=sub.currency_original,
         cost_unified=cost_unified,
+        cost_unified_actual=actual,
         unified_currency=unified,
         exchange_rate=rate,
     )
@@ -525,11 +538,17 @@ def update_payment(
     if not payment:
         raise HTTPException(status_code=404, detail="付费记录不存在")
 
-    payment.cost_original = request.cost_original
+    fields = request.model_dump(exclude_unset=True)
 
-    # Recalculate unified cost using the stored exchange rate
-    if payment.exchange_rate is not None:
-        payment.cost_unified = round(request.cost_original * payment.exchange_rate, 2)
+    if "cost_original" in fields and fields["cost_original"] is not None:
+        payment.cost_original = fields["cost_original"]
+        # Re-estimate the unified cost using the rate stored on this record.
+        if payment.exchange_rate is not None:
+            payment.cost_unified = round(payment.cost_original * payment.exchange_rate, 2)
+
+    if "cost_unified_actual" in fields:
+        actual = fields["cost_unified_actual"]
+        payment.cost_unified_actual = actual if actual is not None and actual > 0 else None
 
     db.commit()
     db.refresh(payment)

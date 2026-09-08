@@ -94,6 +94,7 @@ class SubscriptionResponse(BaseModel):
     exchange_rate: Optional[Decimal] = None
     monthly_cost: Optional[Decimal] = None
     monthly_cost_original: Optional[Decimal] = None
+    rate_asof: Optional[date] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     reminder_days: int
@@ -136,10 +137,12 @@ class PaymentRecordCreate(BaseModel):
     start_date: date
     end_date: date
     cost_original: Decimal
+    cost_unified_actual: Optional[Decimal] = None  # real amount charged, in unified currency
 
 
 class PaymentRecordUpdate(BaseModel):
-    cost_original: Decimal
+    cost_original: Optional[Decimal] = None
+    cost_unified_actual: Optional[Decimal] = None  # None leaves it unchanged; use 0 to clear via UI
 
 # ============== Payment History ==============
 
@@ -152,6 +155,7 @@ class PaymentHistoryResponse(BaseModel):
     cost_original: Decimal
     currency_original: str
     cost_unified: Optional[Decimal] = None
+    cost_unified_actual: Optional[Decimal] = None
     unified_currency: Optional[str] = None
     exchange_rate: Optional[Decimal] = None
 
@@ -180,6 +184,23 @@ class ExchangeRateUpdate(BaseModel):
     is_manual: bool = True
 
 
+class ExchangeRateHistoryResponse(BaseModel):
+    base_currency: str
+    target_currency: str
+    rate: Decimal
+    rate_date: date
+    source: str
+
+    class Config:
+        from_attributes = True
+
+
+class ExchangeRateRefreshResponse(BaseModel):
+    message: str
+    updated: int
+    currencies: list[str] = []
+
+
 # ============== Settings ==============
 
 class SettingsResponse(BaseModel):
@@ -191,6 +212,11 @@ class SettingsResponse(BaseModel):
     telegram_enabled: bool = False
     outbound_proxy_url: Optional[str] = None
     outbound_proxy_enabled: bool = False
+    # Projected / recurring cost exchange rate
+    projection_rate_mode: str = "rolling_avg"  # rolling_avg | spot
+    projection_rate_window_days: int = 90
+    projection_fx_buffer_pct: Decimal = Decimal("0")
+    projection_rate_asof: Optional[date] = None  # read-only: latest as-of date across subscriptions
 
 
 class SettingsUpdate(BaseModel):
@@ -201,6 +227,9 @@ class SettingsUpdate(BaseModel):
     telegram_enabled: Optional[bool] = None
     outbound_proxy_url: Optional[str] = None
     outbound_proxy_enabled: Optional[bool] = None
+    projection_rate_mode: Optional[str] = None
+    projection_rate_window_days: Optional[int] = None
+    projection_fx_buffer_pct: Optional[Decimal] = None
 
 
 class PasswordChange(BaseModel):

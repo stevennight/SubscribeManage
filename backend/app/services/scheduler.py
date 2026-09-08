@@ -1,6 +1,7 @@
 """Scheduled tasks using APScheduler."""
 import asyncio
 import logging
+from decimal import Decimal
 from datetime import date, datetime, timedelta
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
@@ -9,7 +10,10 @@ from sqlalchemy.orm import Session
 
 from app.database import SessionLocal
 from app.models import Subscription, SystemConfig, ExchangeRate
-from app.services.currency import get_unified_currency, get_api_key, update_rates_for_currency
+from app.services.currency import (
+    get_unified_currency, get_api_key, update_rates_for_currency,
+    compute_projection_rate, calc_monthly_cost,
+)
 from app.services.http_proxy import get_proxy_url
 from app.services.notification import (
     send_telegram_message, format_expiry_reminder,
@@ -69,8 +73,58 @@ async def task_update_exchange_rates():
                 await update_rates_for_currency(db, api_key, currency, [unified], proxy)
 
         logger.info(f"Updated exchange rates for {len(currencies)} currencies")
+
+        # Keep projected costs in step with the refreshed rates.
+        refresh_all_projections(db)
     except Exception as e:
         logger.error(f"Exchange rate update failed: {e}")
+    finally:
+        db.close()
+
+
+def refresh_all_projections(db: Session) -> int:
+    """Recompute every subscription's projected unified / monthly cost.
+
+    Uses the configured projection rate (trailing average or spot, plus the
+    optional buffer). Historical payment records are never touched. Returns the
+    number of subscriptions updated.
+    """
+    unified = get_unified_currency(db)
+    if not unified:
+        return 0
+
+    today = date.today()
+    updated = 0
+    for sub in db.query(Subscription).all():
+        if not sub.cost_original or not sub.cycle_amount:
+            continue
+
+        if sub.currency_original.upper() == unified.upper():
+            rate, asof = Decimal("1.0"), today
+        else:
+            rate, asof = compute_projection_rate(db, sub.currency_original, unified, today)
+
+        if rate is None:
+            continue
+
+        sub.exchange_rate = rate
+        sub.cost_unified = round(sub.cost_original * rate, 2)
+        sub.monthly_cost = calc_monthly_cost(sub.cost_unified, sub.cycle_amount, sub.cycle_unit)
+        sub.rate_asof = asof
+        updated += 1
+
+    db.commit()
+    return updated
+
+
+async def task_refresh_projections():
+    """Daily task: recompute projected costs (trailing-average rate moves daily)."""
+    db = SessionLocal()
+    try:
+        n = refresh_all_projections(db)
+        logger.info(f"Refreshed projected cost for {n} subscriptions")
+    except Exception as e:
+        logger.error(f"Projection refresh failed: {e}")
     finally:
         db.close()
 
@@ -184,6 +238,15 @@ def init_scheduler():
         replace_existing=True,
     )
 
+    # Projected cost refresh - daily at 06:30 (also runs without an API key,
+    # in case history exists from an earlier period)
+    scheduler.add_job(
+        task_refresh_projections,
+        CronTrigger(hour=6, minute=30),
+        id="refresh_projections",
+        replace_existing=True,
+    )
+
     # Daily subscription check - daily at 09:00
     scheduler.add_job(
         task_daily_subscription_check,
@@ -201,4 +264,4 @@ def init_scheduler():
     )
 
     scheduler.start()
-    logger.info("Scheduler started with 3 tasks")
+    logger.info("Scheduler started with 4 tasks")

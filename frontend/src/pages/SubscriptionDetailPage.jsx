@@ -54,6 +54,7 @@ export default function SubscriptionDetailPage() {
   const [editPayment, setEditPayment] = useState(null);
   const [renewForm, setRenewForm] = useState({
     start_date: '', end_date: '', cycle_amount: 1, cycle_unit: 'month', cost_original: '',
+    cost_unified_actual: '',
   });
 
   const load = async () => {
@@ -82,6 +83,7 @@ export default function SubscriptionDetailPage() {
       cycle_amount: sub.cycle_amount,
       cycle_unit: sub.cycle_unit,
       cost_original: sub.cost_original,
+      cost_unified_actual: '',
     });
     setShowRenew(true);
   };
@@ -102,6 +104,8 @@ export default function SubscriptionDetailPage() {
         start_date: renewForm.start_date,
         end_date: renewForm.end_date,
         cost_original: parseFloat(renewForm.cost_original),
+        cost_unified_actual: renewForm.cost_unified_actual !== ''
+          ? parseFloat(renewForm.cost_unified_actual) : null,
       });
       setShowRenew(false);
       toast.success('付费记录已添加');
@@ -147,7 +151,11 @@ export default function SubscriptionDetailPage() {
     if (!editPayment) return;
     setActionLoading('edit_payment');
     try {
-      await updatePaymentRecord(id, editPayment.id, { cost_original: editPayment.cost_original });
+      await updatePaymentRecord(id, editPayment.id, {
+        cost_original: editPayment.cost_original,
+        cost_unified_actual: editPayment.cost_unified_actual !== '' && editPayment.cost_unified_actual != null
+          ? parseFloat(editPayment.cost_unified_actual) : 0,
+      });
       setEditPayment(null);
       toast.success('费用已更新');
       await load();
@@ -211,7 +219,17 @@ export default function SubscriptionDetailPage() {
               {sub.monthly_cost ? money(sub.monthly_cost, unifiedCurrency) : '—'}
             </div>
           </div>
-          <div className="detail-item"><label>汇率</label><div className="value">{sub.exchange_rate || '—'}</div></div>
+          <div className="detail-item">
+            <label>预估汇率</label>
+            <div className="value">
+              {sub.exchange_rate || '—'}
+              {sub.rate_asof && (
+                <span className="u-muted" style={{ fontSize: 12, marginLeft: 6 }}>
+                  截至 {sub.rate_asof}
+                </span>
+              )}
+            </div>
+          </div>
           <div className="detail-item"><label>开始日期</label><div className="value">{sub.start_date || '—'}</div></div>
           <div className="detail-item"><label>到期日期</label><div className="value">{sub.end_date || '—'}</div></div>
           <div className="detail-item"><label>提前提醒</label><div className="value">{sub.reminder_days} 天</div></div>
@@ -255,15 +273,31 @@ export default function SubscriptionDetailPage() {
                     <td>{shortDate(h.renewed_at)}</td>
                     <td className="num">
                       {money(h.cost_original, h.currency_original)}
-                      {h.cost_unified != null && h.currency_original !== unifiedCurrency
-                        && ` · ${money(h.cost_unified, unifiedCurrency)}`}
+                      {h.currency_original !== unifiedCurrency && h.cost_unified_actual != null && (
+                        <>
+                          {' · '}
+                          <span title="信用卡/银行账单实际扣款">
+                            {money(h.cost_unified_actual, unifiedCurrency)}
+                            <span className="u-muted" style={{ fontSize: 11, marginLeft: 4 }}>实付</span>
+                          </span>
+                        </>
+                      )}
+                      {h.currency_original !== unifiedCurrency && h.cost_unified_actual == null && h.cost_unified != null && (
+                        <>
+                          {' · '}
+                          <span className="u-muted">
+                            {money(h.cost_unified, unifiedCurrency)}
+                            <span style={{ fontSize: 11, marginLeft: 4 }}>估算</span>
+                          </span>
+                        </>
+                      )}
                     </td>
                     <td className="num">{h.exchange_rate || '—'}</td>
                     <td>{h.start_date ? `${h.start_date} → ${h.end_date}` : h.end_date}</td>
                     <td>
                       <div style={{ display: 'flex', gap: 6 }}>
                         <Button size="sm" variant="ghost" icon="fas fa-pen"
-                          onClick={() => setEditPayment({ id: h.id, cost_original: parseFloat(h.cost_original), currency_original: h.currency_original })} />
+                          onClick={() => setEditPayment({ id: h.id, cost_original: parseFloat(h.cost_original), currency_original: h.currency_original, cost_unified_actual: h.cost_unified_actual ?? '' })} />
                         <Button size="sm" variant="ghost" icon="fas fa-trash"
                           onClick={() => setPaymentToDelete(h.id)} />
                       </div>
@@ -298,10 +332,20 @@ export default function SubscriptionDetailPage() {
             <input id="r-end" type="date" className="form-control" value={renewForm.end_date}
               onChange={(e) => handleRenewChange('end_date', e.target.value)} required />
           </Field>
-          <Field label={`本次实际付费金额 (${sub.currency_original})`} htmlFor="r-cost" className="u-mb0">
+          <Field label={`本次实际付费金额 (${sub.currency_original})`} htmlFor="r-cost"
+            className={sub.currency_original === unifiedCurrency ? 'u-mb0' : ''}>
             <input id="r-cost" type="number" step="0.01" className="form-control" value={renewForm.cost_original}
               onChange={(e) => handleRenewChange('cost_original', e.target.value)} required />
           </Field>
+          {sub.currency_original !== unifiedCurrency && (
+            <Field label={`账单实际扣款金额 (${unifiedCurrency})，可选`} htmlFor="r-actual" className="u-mb0"
+              hint="填了就以它为准计入报表；留空则先按付款日汇率估算，等账单出来再补填">
+              <input id="r-actual" type="number" step="0.01" className="form-control"
+                value={renewForm.cost_unified_actual}
+                onChange={(e) => handleRenewChange('cost_unified_actual', e.target.value)}
+                placeholder="等信用卡账单出来后再填也行" />
+            </Field>
+          )}
           <div className="modal-actions">
             <Button type="button" onClick={() => setShowRenew(false)}>取消</Button>
             <Button type="submit" variant="primary" loading={actionLoading === 'renew'}>确认提交</Button>
@@ -313,12 +357,22 @@ export default function SubscriptionDetailPage() {
         {editPayment && (
           <form onSubmit={submitEditPayment}>
             <Field label={`实际付费金额 (${editPayment.currency_original})`} htmlFor="e-cost"
-              hint="修改后会按当时汇率自动重算统一币种金额" className="u-mb0">
+              hint="修改后会按当时汇率自动重算统一币种估算金额"
+              className={editPayment.currency_original === unifiedCurrency ? 'u-mb0' : ''}>
               <input id="e-cost" type="number" step="0.01" className="form-control" autoFocus
                 value={editPayment.cost_original}
                 onChange={(e) => setEditPayment((p) => ({ ...p, cost_original: parseFloat(e.target.value) || 0 }))}
                 required />
             </Field>
+            {editPayment.currency_original !== unifiedCurrency && (
+              <Field label={`账单实际扣款金额 (${unifiedCurrency})，可选`} htmlFor="e-actual" className="u-mb0"
+                hint="留空表示以估算金额计；报表优先使用此金额">
+                <input id="e-actual" type="number" step="0.01" className="form-control"
+                  value={editPayment.cost_unified_actual}
+                  onChange={(e) => setEditPayment((p) => ({ ...p, cost_unified_actual: e.target.value }))}
+                  placeholder="例如信用卡账单上的人民币金额" />
+              </Field>
+            )}
             <div className="modal-actions">
               <Button type="button" onClick={() => setEditPayment(null)}>取消</Button>
               <Button type="submit" variant="primary" loading={actionLoading === 'edit_payment'}>确认保存</Button>

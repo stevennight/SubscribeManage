@@ -49,6 +49,11 @@ export const testTelegram = () => api.post('/api/settings/test-telegram');
 export const testProxy = () => api.post('/api/settings/test-proxy');
 export const getExchangeRates = () => api.get('/api/settings/exchange-rates');
 export const updateExchangeRate = (data) => api.put('/api/settings/exchange-rates', data);
+export const refreshExchangeRates = () => api.post('/api/settings/exchange-rates/refresh');
+export const getExchangeRateHistory = (base, days = 90, target) =>
+  api.get('/api/settings/exchange-rates/history', {
+    params: { base, days, ...(target ? { target } : {}) },
+  });
 
 // Categories
 export const getCategories = () => api.get('/api/categories');

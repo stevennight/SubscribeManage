@@ -4,13 +4,34 @@
 import { useState, useEffect } from 'react';
 import {
   getSettings, updateSettings, testTelegram, testProxy,
-  getExchangeRates, updateExchangeRate,
+  getExchangeRates, updateExchangeRate, refreshExchangeRates, getExchangeRateHistory,
   getCategories, createCategory, updateCategory, deleteCategory,
   changePassword, changeUsername, getMe,
 } from '../services/api';
 import { Button, Modal, Field, PageHeader, LoadingBlock, useToast } from '../components/ui';
+import { money, shortDate } from '../lib/format';
 
 const CURRENCY_OPTIONS = ['CNY', 'USD', 'EUR', 'GBP', 'JPY', 'HKD', 'TWD', 'KRW', 'SGD', 'AUD', 'CAD', 'CHF', 'RUB', 'THB', 'MYR'];
+
+/** Tiny inline SVG line chart for a rate history series. */
+function Sparkline({ points }) {
+  if (!points || points.length < 2) {
+    return <p className="u-muted" style={{ fontSize: 13 }}>历史数据不足，暂无法绘制走势。</p>;
+  }
+  const W = 460, H = 120, PAD = 6;
+  const vals = points.map((p) => p.rate);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = max - min || 1;
+  const x = (i) => PAD + (i * (W - 2 * PAD)) / (points.length - 1);
+  const y = (v) => H - PAD - ((v - min) / span) * (H - 2 * PAD);
+  const d = points.map((p, i) => `${i === 0 ? 'M' : 'L'}${x(i).toFixed(1)} ${y(p.rate).toFixed(1)}`).join(' ');
+  return (
+    <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} style={{ display: 'block' }}>
+      <path d={d} fill="none" stroke="var(--accent)" strokeWidth="2" />
+      <circle cx={x(points.length - 1)} cy={y(points[points.length - 1].rate)} r="3" fill="var(--accent)" />
+    </svg>
+  );
+}
 
 export default function SettingsPage() {
   const toast = useToast();
@@ -41,6 +62,17 @@ export default function SettingsPage() {
   const [newRateValue, setNewRateValue] = useState('');
   const [newRateManual, setNewRateManual] = useState(true);
 
+  const [refreshing, setRefreshing] = useState(false);
+  const [projMode, setProjMode] = useState('rolling_avg');
+  const [projWindow, setProjWindow] = useState(90);
+  const [projBuffer, setProjBuffer] = useState('0');
+  const [projAsof, setProjAsof] = useState(null);
+  const [savingProj, setSavingProj] = useState(false);
+
+  const [historyFor, setHistoryFor] = useState(null); // base currency string
+  const [historyRows, setHistoryRows] = useState([]);
+  const [historyLoading, setHistoryLoading] = useState(false);
+
   useEffect(() => { load(); }, []);
 
   const load = async () => {
@@ -58,6 +90,10 @@ export default function SettingsPage() {
       setTgEnabled(s.telegram_enabled);
       setProxyUrl(s.outbound_proxy_url || '');
       setProxyEnabled(s.outbound_proxy_enabled);
+      setProjMode(s.projection_rate_mode || 'rolling_avg');
+      setProjWindow(s.projection_rate_window_days || 90);
+      setProjBuffer(String(s.projection_fx_buffer_pct ?? '0'));
+      setProjAsof(s.projection_rate_asof || null);
       setRates(rateRes.data);
       setCategories(catRes.data);
       try {
@@ -173,6 +209,38 @@ export default function SettingsPage() {
       await load();
     } catch (e) { err(e, '更新失败'); }
   };
+  const handleRefreshRates = async () => {
+    setRefreshing(true);
+    try {
+      const res = await refreshExchangeRates();
+      toast.success(res.data?.message || '汇率已刷新');
+      await load();
+    } catch (e) { err(e, '刷新失败'); }
+    finally { setRefreshing(false); }
+  };
+  const handleSaveProjection = async () => {
+    setSavingProj(true);
+    try {
+      await updateSettings({
+        projection_rate_mode: projMode,
+        projection_rate_window_days: Number(projWindow) || 90,
+        projection_fx_buffer_pct: String(projBuffer || '0'),
+      });
+      toast.success('预估汇率设置已保存，月费用已按新口径重算');
+      await load();
+    } catch (e) { err(e, '保存失败'); }
+    finally { setSavingProj(false); }
+  };
+  const openHistory = async (base) => {
+    setHistoryFor(base);
+    setHistoryLoading(true);
+    setHistoryRows([]);
+    try {
+      const res = await getExchangeRateHistory(base, 180, settings.unified_currency);
+      setHistoryRows(res.data.map((r) => ({ ...r, rate: parseFloat(r.rate) })));
+    } catch (e) { err(e, '加载历史失败'); }
+    finally { setHistoryLoading(false); }
+  };
 
   if (loading) return <LoadingBlock />;
 
@@ -205,13 +273,15 @@ export default function SettingsPage() {
 
       <div className="card">
         <div className="card-title"><i className="fas fa-key" />汇率 API</div>
-        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end', flexWrap: 'wrap' }}>
           <Field label="ExchangeRate-API Key（可选）" className="u-mb0" htmlFor="s-apikey"
-            hint="留空则始终使用手动汇率">
+            hint="留空则始终使用手动汇率。保存后点「立即刷新」即可拉取，不必等每日定时任务。">
             <input id="s-apikey" type="text" className="form-control" value={apiKey}
               onChange={(e) => setApiKey(e.target.value)} placeholder="留空则使用手动汇率" style={{ minWidth: 280 }} />
           </Field>
           <Button variant="primary" onClick={handleSaveApi}>保存</Button>
+          <Button icon="fas fa-rotate" onClick={handleRefreshRates} loading={refreshing}
+            disabled={!apiKey}>立即刷新</Button>
         </div>
       </div>
 
@@ -243,6 +313,8 @@ export default function SettingsPage() {
                     e.target.checked ? `${r.base_currency} 已锁定为手动` : `${r.base_currency} 已切换为 API 自动`)} />
                 手动
               </label>
+              <Button size="sm" variant="ghost" icon="fas fa-chart-line"
+                onClick={() => openHistory(r.base_currency)}>历史</Button>
             </div>
           ))}
           <div style={{ display: 'flex', gap: 8, alignItems: 'flex-end', flexWrap: 'wrap', marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
@@ -264,6 +336,47 @@ export default function SettingsPage() {
             </label>
             <Button variant="primary" size="sm" onClick={handleAddRate}>添加</Button>
           </div>
+        </div>
+      )}
+
+      {settings?.unified_currency && (
+        <div className="card">
+          <div className="card-title">
+            <i className="fas fa-chart-line" />预估成本汇率
+            <span className="u-muted" style={{ fontSize: 13, fontWeight: 400 }}>
+              仅影响每月/预估费用，历史付费记录按当时汇率或实付金额计
+            </span>
+          </div>
+          <p className="field-hint" style={{ marginBottom: 12 }}>
+            {projAsof
+              ? <>当前预估汇率截至 <strong>{shortDate(projAsof)}</strong>。</>
+              : '尚未生成预估汇率快照。'}
+          </p>
+          <div className="form-row">
+            <Field label="汇率口径" htmlFor="p-mode"
+              hint={projMode === 'rolling_avg'
+                ? '取窗口内每日汇率的平均值，随汇率缓慢移动，削峰更稳'
+                : '直接用当前即期汇率，最新但波动最大'}>
+              <select id="p-mode" className="form-control" value={projMode}
+                onChange={(e) => setProjMode(e.target.value)}>
+                <option value="rolling_avg">滚动平均</option>
+                <option value="spot">即期汇率</option>
+              </select>
+            </Field>
+            <Field label="滚动窗口（天）" htmlFor="p-window" hint="仅滚动平均口径生效，常用 30 / 60 / 90">
+              <input id="p-window" type="number" min="1" max="730" className="form-control"
+                value={projWindow} disabled={projMode !== 'rolling_avg'}
+                onChange={(e) => setProjWindow(e.target.value)} />
+            </Field>
+            <Field label="保守缓冲（%）" htmlFor="p-buffer"
+              hint="预估费用 = 汇率换算 ×(1+缓冲)。想避免低估时设 2~3，默认 0">
+              <input id="p-buffer" type="number" min="0" max="100" step="0.5" className="form-control"
+                value={projBuffer} onChange={(e) => setProjBuffer(e.target.value)} />
+            </Field>
+          </div>
+          <Button size="sm" variant="primary" onClick={handleSaveProjection} loading={savingProj}>
+            保存并重算
+          </Button>
         </div>
       )}
 
@@ -383,6 +496,46 @@ export default function SettingsPage() {
         <Button size="sm" variant="primary" onClick={handleChangePassword}
           disabled={!oldPwd || !newPwd}>修改密码</Button>
       </div>
+
+      <Modal
+        open={!!historyFor}
+        onClose={() => setHistoryFor(null)}
+        title={`汇率历史 · 1 ${historyFor || ''} → ${settings?.unified_currency || ''}`}
+        width={520}
+      >
+        {historyLoading ? (
+          <p className="u-muted">加载中…</p>
+        ) : historyRows.length === 0 ? (
+          <p className="u-muted">近 180 天暂无历史数据。配置 API Key 并「立即刷新」后会开始积累。</p>
+        ) : (
+          <>
+            <Sparkline points={historyRows} />
+            {(() => {
+              const vals = historyRows.map((r) => r.rate);
+              const avg = vals.reduce((a, b) => a + b, 0) / vals.length;
+              return (
+                <p className="field-hint" style={{ margin: '8px 0 12px' }}>
+                  共 {vals.length} 天 · 最低 {money(Math.min(...vals))} · 最高 {money(Math.max(...vals))} · 均值 {money(avg)}
+                </p>
+              );
+            })()}
+            <div className="table-wrapper" style={{ maxHeight: 240, overflowY: 'auto' }}>
+              <table>
+                <thead><tr><th>日期</th><th className="num">汇率</th><th>来源</th></tr></thead>
+                <tbody>
+                  {[...historyRows].reverse().map((r) => (
+                    <tr key={r.rate_date}>
+                      <td>{r.rate_date}</td>
+                      <td className="num">{parseFloat(r.rate).toFixed(4)}</td>
+                      <td>{r.source === 'manual' ? '手动' : 'API'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </Modal>
 
       <Modal
         open={!!catToDelete}
